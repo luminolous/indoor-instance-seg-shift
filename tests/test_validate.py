@@ -142,6 +142,18 @@ def test_detects_file_problems_and_warnings(tmp_path: Path):
     } <= _checks(report, WARNING)
 
 
+def test_detects_exact_duplicate_annotation(tmp_path: Path):
+    data = _good_split()
+    dup = copy.deepcopy(data["annotations"][0])
+    dup["id"] = 99
+    data["annotations"].append(dup)
+    _write_split(tmp_path, "train", data)
+    report = validate_dataset(tmp_path, ["train"])
+    assert report.n_errors == 0
+    assert "exact duplicate annotation (same image, class, polygon)" in _checks(report, WARNING)
+    assert report.splits[0].stats["duplicate_annotations"] == 1
+
+
 def test_detects_category_mismatch_across_splits(tmp_path: Path):
     _write_split(tmp_path, "train", _good_split())
     other = _good_split()

@@ -127,6 +127,33 @@ def _check_ids(split: CocoSplit, rep: SplitReport) -> None:
                 rep.flag(ERROR, f"duplicate {kind} id", f"id={item_id} x{n}")
 
 
+def _check_duplicate_annotations(split: CocoSplit, rep: SplitReport) -> int:
+    """Flag annotations with the same image, category and identical polygons. Returns count."""
+    seen: dict[tuple, int] = {}
+    n_dup = 0
+    for ann in split.annotations:
+        seg = ann.get("segmentation")
+        if not isinstance(seg, list):
+            continue
+        key = (
+            ann.get("image_id"),
+            ann.get("category_id"),
+            tuple(tuple(p) for p in seg if isinstance(p, list)),
+        )
+        if key in seen:
+            n_dup += 1
+            img = split.images_by_id.get(ann.get("image_id"), {})
+            name = split.category_names.get(ann.get("category_id"), "?")
+            rep.flag(
+                WARNING,
+                "exact duplicate annotation (same image, class, polygon)",
+                f"ann {ann.get('id')} = ann {seen[key]} ({name}, {img.get('file_name', '?')})",
+            )
+        else:
+            seen[key] = ann.get("id")
+    return n_dup
+
+
 def _check_annotation(
     ann: dict[str, Any],
     split: CocoSplit,
@@ -260,6 +287,7 @@ def validate_split(
     counters: Counter = Counter()
 
     _check_ids(split, rep)
+    counters["duplicate_annotations"] = _check_duplicate_annotations(split, rep)
     for ann in split.annotations:
         _check_annotation(ann, split, rep, tol, counters)
 
@@ -285,6 +313,7 @@ def validate_split(
         "multi_polygon_annotations": counters["multi_polygon_annotations"],
         "rle_annotations": counters["rle"],
         "iscrowd_nonzero": counters["iscrowd_nonzero"],
+        "duplicate_annotations": counters["duplicate_annotations"],
         "image_files_on_disk": counters["image_files_on_disk"] if check_files else None,
         "exif_rotated_images": counters["exif_rotated"] if check_files else None,
         "rotation_fixed_images": counters["rotation_fixed"] if check_files else None,
@@ -373,6 +402,7 @@ _STAT_ROWS = [
     ("multi_polygon_annotations", "Annotations with > 1 polygon"),
     ("rle_annotations", "RLE annotations"),
     ("iscrowd_nonzero", "iscrowd != 0"),
+    ("duplicate_annotations", "Exact duplicate annotations"),
     ("image_files_on_disk", "Image files on disk"),
     ("exif_rotated_images", "Images with EXIF orientation != 1"),
     ("rotation_fixed_images", "Images rotated on load (data.rotation_fixes)"),

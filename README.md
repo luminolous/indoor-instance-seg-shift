@@ -177,13 +177,14 @@ wheel. Re-run step 3.
 
 ## How to run
 
-> The command-line entry points below are **planned and not implemented yet**. This section
-> will be updated as each one lands.
+> Entry points marked `planned` are not implemented yet. This section is updated as each one
+> lands.
 
 ```powershell
-# 1. Validate the dataset and convert COCO -> YOLO-seg (writes to dataset/derived/)
-python -m iiss.data.validate            # planned
-python -m iiss.data.coco_to_yolo        # planned
+# 1. Validate the dataset, run the EDA, convert COCO -> YOLO-seg
+python -m iiss.data.validate            # -> results/data_validation.md
+python -m iiss.data.eda                 # -> results/eda/
+python -m iiss.data.coco_to_yolo        # -> dataset/derived/yolo/ (--overwrite to rebuild)
 
 # 2. Train one run (2 h cap, resumable)
 python -m iiss.train --run configs/runs/yolo_s640_seed42.yaml          # planned
