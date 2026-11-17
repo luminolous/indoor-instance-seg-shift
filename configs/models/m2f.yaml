@@ -1,0 +1,6 @@
+# Mask2Former Swin-T (transformer, mask classification). Training hyperparameters are added
+# with the model wrapper (roadmap P3).
+model: m2f
+family: transformer
+library: transformers
+weights: facebook/mask2former-swin-tiny-coco-instance  # COCO instance

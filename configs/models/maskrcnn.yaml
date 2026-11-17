@@ -1,0 +1,6 @@
+# Mask R-CNN R50-FPN v2 (two-stage CNN, 28x28 RoI mask head). Training hyperparameters are
+# added with the model wrapper (roadmap P3).
+model: maskrcnn
+family: two-stage-cnn
+library: torchvision
+weights: maskrcnn_resnet50_fpn_v2  # torchvision COCO weights (DEFAULT)

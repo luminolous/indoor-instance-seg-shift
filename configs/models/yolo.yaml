@@ -1,0 +1,6 @@
+# YOLO11-seg (one-stage CNN, prototype masks). Training hyperparameters are added with the
+# model wrapper (roadmap P3).
+model: yolo
+family: one-stage-cnn
+library: ultralytics
+weights: yolo11s-seg.pt  # COCO-pretrained

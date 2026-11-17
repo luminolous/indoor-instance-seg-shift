@@ -1,0 +1,41 @@
+# Shared defaults for every run. Overridden by configs/models/<model>.yaml, then by
+# configs/runs/<run_id>.yaml. Relative paths are resolved from the repository root.
+
+seed: 42
+deterministic: false  # true = deterministic cuDNN algorithms (slower); seeding is always on
+amp: true
+
+# Training wall-clock cap per run (assignment: 2 h of GPU time per model).
+time_cap_hours: 2.0
+
+paths:
+  dataset_root: dataset/panoptic-indoor-segmentation.v5i.coco-segmentation
+  phone_root: dataset/manual-benchmark
+  derived_root: dataset/derived
+  runs_root: runs
+  results_root: results
+  gpu_time_log: runs/gpu_time_log.csv
+
+data:
+  num_classes: 75  # COCO category ids 0-74; id 0 (indoor-objects) has no annotations
+  splits:
+    train: train
+    valid: valid
+    test: test
+  annotation_file: _annotations.coco.json
+
+# Evaluation sets: valid (in-distribution), test (original, shifted), phone (self-made).
+eval_sets: [valid, test, phone]
+
+smoke:
+  max_train_images: 16
+  max_eval_images: 8
+  max_epochs: 2
+  max_iters: 50
+  input_size: 320
+  max_minutes: 5
+  output_dir: runs/smoke
+
+logging:
+  tensorboard: true
+  wandb: false
