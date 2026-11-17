@@ -227,3 +227,14 @@ dataset/manual-benchmark
 dataset/panoptic-indoor-segmentation.v5i.coco-segmentation
 
 # Agent
+.agent/
+CLAUDE.md
+
+# Training artifacts
+runs/
+wandb/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+dataset/derived/
