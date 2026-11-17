@@ -49,6 +49,10 @@ Course assignment: Computer Vision, Evaluasi CPMK 3 (ITS).
 - The dataset is used **exactly as exported**: no class merging, dropping, renaming or
   re-splitting. The only transformation is a format conversion (COCO to YOLO-seg) that keeps
   the class ids.
+- 4 train/valid images are stored rotated by 90 degrees relative to their annotations (no EXIF
+  tag). They are rotated back **in memory when loaded** (`data.rotation_fixes` in
+  `configs/base.yaml`, applied by `iiss.data.images.load_image`); the files are not modified.
+  See `results/data_validation.md`.
 - The original test split is already shifted from train (mixed, often higher resolutions and a
   different class distribution; 7 test classes have no train instances).
 

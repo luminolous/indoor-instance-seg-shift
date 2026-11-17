@@ -23,6 +23,15 @@ data:
     valid: valid
     test: test
   annotation_file: _annotations.coco.json
+  # Images whose pixels are stored rotated relative to their JSON size and polygons (no EXIF).
+  # Value = counter-clockwise rotation in degrees applied when the image is loaded, so pixels
+  # match the annotations. The dataset files are never modified. Each entry was checked by
+  # overlaying the polygons (see results/data_validation.md). Direction differs per image.
+  rotation_fixes:
+    182169107_jpg.rf.c9b1bbecf1474a5b36a6df197c30dfed.jpg: 90   # train
+    182169121_jpg.rf.eb0ccb71d0ea38adf1e38bf9c02a4a15.jpg: 270  # train
+    182169108_jpg.rf.205d9f1ed8f888006b8f97fc29eb8790.jpg: 270  # valid
+    182169109_jpg.rf.0531e60eb6e404d9633ed0c23a381fe7.jpg: 90   # valid
 
 # Evaluation sets: valid (in-distribution), test (original, shifted), phone (self-made).
 eval_sets: [valid, test, phone]

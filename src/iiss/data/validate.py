@@ -4,6 +4,9 @@ Checks per split: unique ids, annotation -> image / category references, polygon
 bounds, bbox and area sanity, image files on disk, actual image size vs JSON, EXIF orientation.
 Across splits: identical, contiguous category lists, and no annotations on category 0.
 
+Images listed in ``data.rotation_fixes`` (base config) are checked after the rotation that
+:func:`iiss.data.images.load_image` applies; they are reported as warnings, not errors.
+
 The dataset is read-only; this module only reports. Known quirks of v5 (near-duplicate classes,
 label noise) are kept by policy and are not flagged.
 
@@ -20,6 +23,7 @@ import logging
 import math
 import sys
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -29,6 +33,7 @@ import numpy as np
 from PIL import Image
 
 from iiss.data.coco import DEFAULT_ANNOTATION_FILE, CocoSplit, load_split
+from iiss.data.images import validate_rotation_fixes
 from iiss.utils.config import load_yaml
 from iiss.utils.log import setup_logging
 from iiss.utils.paths import repo_root, resolve_path
@@ -199,7 +204,9 @@ def _check_annotation(
         counters["degenerate_annotations"] += 1
 
 
-def _check_files(split: CocoSplit, rep: SplitReport, counters: Counter) -> None:
+def _check_files(
+    split: CocoSplit, rep: SplitReport, counters: Counter, fixes: Mapping[str, int]
+) -> None:
     listed = set()
     for img in split.images:
         path = split.image_path(img)
@@ -214,11 +221,22 @@ def _check_files(split: CocoSplit, rep: SplitReport, counters: Counter) -> None:
         except OSError as exc:
             rep.flag(ERROR, "image file unreadable", f"{img['file_name']}: {exc}")
             continue
+        fix = fixes.get(img["file_name"])
+        if fix is not None:
+            counters["rotation_fixed"] += 1
+            rep.flag(
+                WARNING,
+                "rotation fix applied on load (data.rotation_fixes)",
+                f"{img['file_name']}: file {actual[0]}x{actual[1]}, rotate {fix} deg CCW",
+            )
+            if fix in (90, 270):
+                actual = (actual[1], actual[0])
         if actual != (img["width"], img["height"]):
             rep.flag(
                 ERROR,
                 "image size differs from JSON",
                 f"{img['file_name']}: file {actual[0]}x{actual[1]}"
+                f"{' (after rotation fix)' if fix is not None else ''}"
                 f" vs json {img['width']}x{img['height']}",
             )
         if orientation not in (1, None):
@@ -231,8 +249,13 @@ def _check_files(split: CocoSplit, rep: SplitReport, counters: Counter) -> None:
     counters["image_files_on_disk"] = len(on_disk)
 
 
-def validate_split(split: CocoSplit, check_files: bool = True, tol: float = 1.0) -> SplitReport:
-    """Run all per-split checks."""
+def validate_split(
+    split: CocoSplit,
+    check_files: bool = True,
+    tol: float = 1.0,
+    fixes: Mapping[str, int] | None = None,
+) -> SplitReport:
+    """Run all per-split checks. ``fixes`` is the ``file_name -> degrees_ccw`` table."""
     rep = SplitReport(name=split.name)
     counters: Counter = Counter()
 
@@ -245,7 +268,7 @@ def validate_split(split: CocoSplit, check_files: bool = True, tol: float = 1.0)
         rep.flag(WARNING, "image without annotations", img["file_name"])
 
     if check_files:
-        _check_files(split, rep, counters)
+        _check_files(split, rep, counters, fixes or {})
 
     sizes = Counter(f"{img['width']}x{img['height']}" for img in split.images)
     cat_counts = Counter(ann.get("category_id") for ann in split.annotations)
@@ -264,6 +287,7 @@ def validate_split(split: CocoSplit, check_files: bool = True, tol: float = 1.0)
         "iscrowd_nonzero": counters["iscrowd_nonzero"],
         "image_files_on_disk": counters["image_files_on_disk"] if check_files else None,
         "exif_rotated_images": counters["exif_rotated"] if check_files else None,
+        "rotation_fixed_images": counters["rotation_fixed"] if check_files else None,
         "distinct_image_sizes": len(sizes),
         "top_image_sizes": sizes.most_common(5),
         "zero_instance_categories": [
@@ -306,8 +330,14 @@ def validate_dataset(
     annotation_file: str = DEFAULT_ANNOTATION_FILE,
     check_files: bool = True,
     tol: float = 1.0,
+    fixes: Mapping[str, int] | None = None,
 ) -> ValidationReport:
-    """Validate every split and the category consistency across them."""
+    """Validate every split and the category consistency across them.
+
+    ``fixes`` is the ``file_name -> degrees_ccw`` rotation table (``data.rotation_fixes``).
+    """
+    fixes = dict(fixes or {})
+    validate_rotation_fixes(fixes)
     root = resolve_path(dataset_root)
     report = ValidationReport(dataset_root=root)
     loaded = []
@@ -315,9 +345,16 @@ def validate_dataset(
         split = load_split(root, name, annotation_file)
         loaded.append(split)
         logger.info("Validating %s (%d images)", name, len(split.images))
-        report.splits.append(validate_split(split, check_files=check_files, tol=tol))
+        report.splits.append(validate_split(split, check_files=check_files, tol=tol, fixes=fixes))
     if loaded:
         _check_categories(loaded, report)
+        known = {img["file_name"] for split in loaded for img in split.images}
+        unused = sorted(set(fixes) - known)
+        if unused:
+            issue = Issue(WARNING, "all", "rotation fix for a file not in the validated splits")
+            for name in unused:
+                issue.add(name)
+            report.global_issues.append(issue)
     return report
 
 
@@ -338,6 +375,7 @@ _STAT_ROWS = [
     ("iscrowd_nonzero", "iscrowd != 0"),
     ("image_files_on_disk", "Image files on disk"),
     ("exif_rotated_images", "Images with EXIF orientation != 1"),
+    ("rotation_fixed_images", "Images rotated on load (data.rotation_fixes)"),
     ("distinct_image_sizes", "Distinct image sizes"),
 ]
 
@@ -431,6 +469,7 @@ def main(argv: list[str] | None = None) -> int:
         annotation_file=args.annotation_file,
         check_files=not args.no_files,
         tol=args.tol,
+        fixes=base["data"].get("rotation_fixes") or {},
     )
     command = "python -m iiss.data.validate " + " ".join(argv if argv is not None else sys.argv[1:])
     out = resolve_path(args.out)
