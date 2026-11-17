@@ -54,7 +54,8 @@ Course assignment: Computer Vision, Evaluasi CPMK 3 (ITS).
   `configs/base.yaml`, applied by `iiss.data.images.load_image`); the files are not modified.
   See `results/data_validation.md`.
 - The original test split is already shifted from train (mixed, often higher resolutions and a
-  different class distribution; 7 test classes have no train instances).
+  different class distribution; 9 test classes have no train instances). See
+  `results/eda/summary.md`.
 
 **Phone test set** (self-collected): at least 40 phone photos of real rooms, at least 10 in hard
 conditions (low light, backlight, occlusion, extreme angle), annotated in Roboflow with the same

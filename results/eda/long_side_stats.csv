@@ -1,0 +1,4 @@
+split,images,min,p25,median,p75,max,upscaled_pct_at_320,downscaled_pct_at_320,upscaled_pct_at_640,downscaled_pct_at_640,upscaled_pct_at_960,downscaled_pct_at_960
+train,397,561,640.0,640.0,640.0,857,0.0,100.0,0.25,4.03,100.0,0.0
+valid,166,640,640.0,640.0,640.0,857,0.0,100.0,0.0,3.61,100.0,0.0
+test,359,225,600.0,800.0,1280.0,3398,14.76,85.24,28.13,67.97,58.22,40.39

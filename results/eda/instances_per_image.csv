@@ -1,0 +1,4 @@
+split,images,mean,median,p90,max,zero
+train,397,11.28,8.0,22.0,61,0
+valid,166,12.18,9.0,21.5,79,1
+test,359,14.89,12.0,26.0,129,0
