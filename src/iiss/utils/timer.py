@@ -1,0 +1,230 @@
+"""Training wall-clock timer with a per-run time cap and an append-only GPU time log.
+
+Usage inside a model wrapper::
+
+    with RunTimer(run_id, cap_hours=cfg["time_cap_hours"], log_path=gpu_time_log) as timer:
+        timer.add_cap_callback(lambda: save_checkpoint("last"))
+        for epoch in ...:
+            for batch in ...:
+                ...
+                if timer.should_stop():
+                    break  # stop gracefully; the cap callbacks have already run
+
+The cap is **cumulative per run id**: when a run is resumed (crash, laptop sleep), the time
+already logged for that run id in ``gpu_time_log.csv`` is subtracted from the budget.
+
+Each ``with`` block appends exactly one row to the log, also when it ends in an exception::
+
+    run_id,start,end,wall_clock_s,gpu_name,peak_vram_mb,cap_hit,status
+
+``peak_vram_mb`` is ``torch.cuda.max_memory_reserved()`` (closest to what ``nvidia-smi``
+shows). ``status`` is ``completed``, ``cap_hit``, ``interrupted`` or ``error``.
+
+Note: elapsed time uses ``time.monotonic()``. Keep the laptop awake during training: time
+spent suspended may count towards the cap, depending on the OS clock.
+"""
+
+from __future__ import annotations
+
+import csv
+import logging
+import time
+from collections.abc import Callable
+from datetime import datetime
+from pathlib import Path
+from types import TracebackType
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+LOG_COLUMNS = (
+    "run_id",
+    "start",
+    "end",
+    "wall_clock_s",
+    "gpu_name",
+    "peak_vram_mb",
+    "cap_hit",
+    "status",
+)
+
+
+def logged_seconds(log_path: str | Path, run_id: str) -> float:
+    """Sum ``wall_clock_s`` of all rows for ``run_id`` in the log (0 if the file is missing)."""
+    log_path = Path(log_path)
+    if not log_path.is_file():
+        return 0.0
+    total = 0.0
+    with log_path.open(newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            if row.get("run_id") == run_id:
+                total += float(row["wall_clock_s"])
+    return total
+
+
+def _now_iso() -> str:
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def _cuda_device_name() -> str:
+    try:
+        import torch
+    except ImportError:
+        return "cpu"
+    if torch.cuda.is_available():
+        return torch.cuda.get_device_name(torch.cuda.current_device())
+    return "cpu"
+
+
+class RunTimer:
+    """Context manager that enforces a wall-clock cap and logs GPU time for one run session.
+
+    Args:
+        run_id: Run identifier, e.g. ``yolo_s640_seed42``.
+        cap_hours: Total training budget for this run id. ``None`` disables the cap.
+        log_path: CSV file to append to (created with a header if missing).
+        resume: If True, subtract time already logged for ``run_id`` from the budget.
+        clock: Monotonic clock in seconds. Injectable for tests.
+        track_cuda: If True, reset and read CUDA peak-memory statistics.
+    """
+
+    def __init__(
+        self,
+        run_id: str,
+        cap_hours: float | None,
+        log_path: str | Path,
+        *,
+        resume: bool = True,
+        clock: Callable[[], float] = time.monotonic,
+        track_cuda: bool = True,
+    ) -> None:
+        self.run_id = run_id
+        self.cap_seconds = None if cap_hours is None else float(cap_hours) * 3600.0
+        self.log_path = Path(log_path)
+        self.prior_seconds = logged_seconds(self.log_path, run_id) if resume else 0.0
+        self._clock = clock
+        self._track_cuda = track_cuda
+        self._callbacks: list[Callable[[], Any]] = []
+        self._t0: float | None = None
+        self._start_iso: str | None = None
+        self.cap_hit = False
+
+    # -- context manager ------------------------------------------------------------------
+
+    def __enter__(self) -> RunTimer:
+        self._reset_cuda_peak()
+        self._start_iso = _now_iso()
+        self._t0 = self._clock()
+        if self.cap_seconds is not None:
+            logger.info(
+                "Timer started for %s: budget %.0f s, already used %.0f s, remaining %.0f s",
+                self.run_id,
+                self.cap_seconds,
+                self.prior_seconds,
+                self.remaining(),
+            )
+            if self.remaining() <= 0:
+                logger.warning("Run %s has no time budget left before starting", self.run_id)
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        if exc_type is None:
+            status = "cap_hit" if self.cap_hit else "completed"
+        elif issubclass(exc_type, KeyboardInterrupt):
+            status = "interrupted"
+        else:
+            status = "error"
+        row = self._write_row(status)
+        logger.info(
+            "Timer stopped for %s: %s s this session, status=%s, peak VRAM %s MB",
+            self.run_id,
+            row["wall_clock_s"],
+            status,
+            row["peak_vram_mb"],
+        )
+
+    # -- cap interface --------------------------------------------------------------------
+
+    def add_cap_callback(self, fn: Callable[[], Any]) -> None:
+        """Register a function called once, the first time the cap is reached."""
+        self._callbacks.append(fn)
+
+    def session_seconds(self) -> float:
+        """Seconds elapsed in the current ``with`` block."""
+        if self._t0 is None:
+            return 0.0
+        return self._clock() - self._t0
+
+    def elapsed(self) -> float:
+        """Total seconds used by this run id, including previous sessions."""
+        return self.prior_seconds + self.session_seconds()
+
+    def remaining(self) -> float:
+        """Seconds left in the budget (``inf`` if there is no cap)."""
+        if self.cap_seconds is None:
+            return float("inf")
+        return self.cap_seconds - self.elapsed()
+
+    def should_stop(self) -> bool:
+        """Return True once the cap is reached. Runs the cap callbacks on the first True."""
+        if self.cap_hit:
+            return True
+        if self.cap_seconds is None or self.remaining() > 0:
+            return False
+        self.cap_hit = True
+        logger.warning(
+            "Time cap reached for %s after %.0f s total; stopping gracefully",
+            self.run_id,
+            self.elapsed(),
+        )
+        for fn in self._callbacks:
+            fn()
+        return True
+
+    # -- internals ------------------------------------------------------------------------
+
+    def _reset_cuda_peak(self) -> None:
+        if not self._track_cuda:
+            return
+        try:
+            import torch
+        except ImportError:
+            return
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
+
+    def _peak_vram_mb(self) -> float | None:
+        if not self._track_cuda:
+            return None
+        try:
+            import torch
+        except ImportError:
+            return None
+        if not torch.cuda.is_available():
+            return None
+        return round(torch.cuda.max_memory_reserved() / 2**20, 1)
+
+    def _write_row(self, status: str) -> dict[str, Any]:
+        row = {
+            "run_id": self.run_id,
+            "start": self._start_iso,
+            "end": _now_iso(),
+            "wall_clock_s": round(self.session_seconds(), 1),
+            "gpu_name": _cuda_device_name() if self._track_cuda else "n/a",
+            "peak_vram_mb": self._peak_vram_mb(),
+            "cap_hit": self.cap_hit,
+            "status": status,
+        }
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        new_file = not self.log_path.is_file() or self.log_path.stat().st_size == 0
+        with self.log_path.open("a", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=LOG_COLUMNS)
+            if new_file:
+                writer.writeheader()
+            writer.writerow(row)
+        return row
