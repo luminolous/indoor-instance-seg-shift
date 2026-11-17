@@ -238,3 +238,28 @@ wandb/
 *.ckpt
 *.safetensors
 dataset/derived/
+
+# --- Project additions ---
+
+# Secrets: any .env variant, but keep the template
+.env.*
+!.env.example
+
+# Dataset archives (e.g. Roboflow zip downloads)
+dataset/*.zip
+
+# Other model weight / export formats
+*.onnx
+*.engine
+*.torchscript
+*.tflite
+
+# Local tool caches written inside the repo
+.hf_cache/
+.ultralytics/
+lightning_logs/
+
+# OS / editor noise
+Thumbs.db
+desktop.ini
+.DS_Store
