@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "iiss"
+version = "0.1.0"
+description = "Indoor instance segmentation benchmark (YOLO11-seg, Mask R-CNN, Mask2Former) with input-size ablation and domain-shift analysis."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # PyTorch: install the CUDA build first (see README). These ranges only pin the major line.
+    "torch>=2.14,<3",
+    "torchvision>=0.29,<1",
+    # Models
+    "ultralytics>=8.4,<9",
+    "transformers>=5.0,<6",
+    "timm>=1.0,<2",
+    # Evaluation
+    "pycocotools>=2.0.10,<3",
+    # Data / IO
+    "numpy>=2.0,<3",
+    "opencv-python>=4.10,<6",
+    "pillow>=11,<13",
+    "pyyaml>=6.0,<7",
+    "pandas>=2.2,<4",
+    "exifread>=3.0,<4",
+    "python-dotenv>=1.0,<2",
+    "tqdm>=4.66,<5",
+    # Logging / plots
+    "matplotlib>=3.9,<4",
+    "tensorboard>=2.18,<3",
+]
+
+[project.optional-dependencies]
+wandb = ["wandb>=0.19,<1"]
+dev = [
+    "ruff>=0.8",
+    "pytest>=8.3,<10",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+extend-exclude = ["dataset", "runs", "notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "PTH", "N", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
