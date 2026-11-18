@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 import time
@@ -15,6 +16,7 @@ from tqdm import tqdm
 
 from iiss.data.coco import load_coco_json
 from iiss.data.images import load_image
+from iiss.eval.coco_eval import load_gt, load_results, run_cocoeval, summary
 from iiss.eval.results_json import Detection, ResultsWriter
 from iiss.utils.config import deep_merge, make_run_id, save_config
 from iiss.utils.env import write_env_json
@@ -100,12 +102,15 @@ def export_predictions(
     out_path: str | Path,
     limit: int | None = None,
     meta: Mapping[str, Any] | Callable[[], Mapping[str, Any]] | None = None,
+    track_vram: bool = True,
 ) -> Path:
     """Run ``predictor`` on every image of ``eval_set`` and write a COCO results JSON.
 
     Images are read from the folder that holds the GT file (Roboflow layout) with
     :func:`load_image`, so EXIF orientation and the dataset rotation fixes are applied and
     predictions are in the annotation frame. ``limit`` keeps the first N images by id (smoke).
+    ``track_vram=False`` leaves the CUDA peak-memory counter alone (validation during training,
+    where :class:`~iiss.utils.timer.RunTimer` owns it).
 
     ``ms_per_image`` in the sidecar is the mean wall-clock time of the predictor call (batch 1,
     including the framework's pre/post-processing and upsampling masks to the original
@@ -114,9 +119,7 @@ def export_predictions(
     """
     gt_file = resolve_path(cfg["eval"]["gt_files"][eval_set])
     gt = load_coco_json(gt_file)
-    images = sorted(gt["images"], key=lambda i: i["id"])
-    if limit is not None:
-        images = images[:limit]
+    images = eval_images(gt, limit)
     writer = ResultsWriter(
         {img["id"]: (img["height"], img["width"]) for img in images},
         [c["id"] for c in gt["categories"]],
@@ -125,7 +128,8 @@ def export_predictions(
     )
     fixes = cfg["data"].get("rotation_fixes") or {}
 
-    _cuda_peak_mb(reset=True)
+    if track_vram:
+        _cuda_peak_mb(reset=True)
     times: list[float] = []
     for img in tqdm(images, desc=f"predict {eval_set}", unit="img"):
         pil = load_image(gt_file.parent / img["file_name"], img, fixes)
@@ -143,10 +147,37 @@ def export_predictions(
         "gt_file": gt_file.name,
         "images_limited_to": limit,
         "ms_per_image": round(1000 * float(np.mean(timed)), 2) if timed else None,
-        "peak_vram_mb": _cuda_peak_mb(),
+        "peak_vram_mb": _cuda_peak_mb() if track_vram else None,
         "smoke": bool(cfg.get("smoke_mode", False)),
     }
     if callable(meta):
         meta = meta()
     info.update(meta or {})
     return writer.write(out_path, meta=info)
+
+
+def eval_images(gt: Mapping[str, Any], limit: int | None = None) -> list[dict[str, Any]]:
+    """GT images sorted by id; the first ``limit`` of them if given (same rule everywhere)."""
+    images = sorted(gt["images"], key=lambda i: i["id"])
+    return images if limit is None else images[:limit]
+
+
+def quick_eval(
+    gt_file: str | Path, results_file: str | Path, limit: int | None = None
+) -> dict[str, dict[str, float]]:
+    """Segm and bbox COCO metrics of a results file, restricted to the same image subset.
+
+    Used for checkpoint selection on ``valid`` during training (the reported numbers come
+    from ``iiss.evaluate``).
+    """
+    gt = load_coco_json(resolve_path(gt_file))
+    keep = {img["id"] for img in eval_images(gt, limit)}
+    subset = {
+        **gt,
+        "images": [i for i in gt["images"] if i["id"] in keep],
+        "annotations": [a for a in gt["annotations"] if a["image_id"] in keep],
+    }
+    coco_gt = load_gt(subset)
+    results = json.loads(Path(results_file).read_text(encoding="utf-8"))
+    coco_dt = load_results(coco_gt, results)
+    return {t: summary(run_cocoeval(coco_gt, coco_dt, t)) for t in ("segm", "bbox")}

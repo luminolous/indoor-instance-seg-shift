@@ -1,6 +1,30 @@
-# Mask R-CNN R50-FPN v2 (two-stage CNN, 28x28 RoI mask head). Training hyperparameters are
-# added with the model wrapper (roadmap P3).
+# Mask R-CNN R50-FPN v2 (two-stage CNN, 28x28 RoI mask head).
 model: maskrcnn
 family: two-stage-cnn
 library: torchvision
-weights: maskrcnn_resnet50_fpn_v2  # torchvision COCO weights (DEFAULT)
+weights: maskrcnn_resnet50_fpn_v2  # torchvision COCO_V1 weights, cached in runs/pretrained/
+
+# Label = v5 category id. Id 0 (indoor-objects) has no annotations and is used as torchvision's
+# background slot, so num_classes = data.num_classes (75) and no id remapping is needed.
+
+train:
+  epochs: 24                 # same budget for every S; tentative until vram_probe
+  batch: 2                   # may shrink only if VRAM forces it (then raise accumulate)
+  accumulate: 1              # optimizer step every N batches; effective batch = batch * N
+  lr: 0.0025                 # torchvision reference 0.02 @ batch 16, linearly scaled to 2
+  momentum: 0.9
+  weight_decay: 0.0001
+  warmup_iters: 200          # optimizer steps of linear warm-up from lr * warmup_factor
+  warmup_factor: 0.001
+  lr_milestones: [16, 22]    # epochs at which lr is multiplied by lr_gamma
+  lr_gamma: 0.1
+  trainable_backbone_layers: 3  # torchvision default for pretrained weights
+  augmentation: hflip        # torchvision reference default (random horizontal flip, p=0.5)
+  workers: 4
+  eval_every: 2              # validate on valid every N epochs (and after the last epoch)
+  log_every: 20              # TensorBoard loss logging, in iterations
+
+predict:
+  score_thresh: 0.001        # box_score_thresh (torchvision default 0.05); low for mAP
+  nms_thresh: 0.5            # box_nms_thresh (torchvision default)
+  mask_threshold: 0.5
