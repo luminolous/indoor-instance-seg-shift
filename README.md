@@ -102,6 +102,13 @@ Training protocol, identical for every run:
 - Metrics: mask mAP@[.50:.95], mAP@.50, APs/APm/APl, per-class AP; bbox mAP as secondary.
 - Evaluation sets: `valid` (in-distribution), `test` (original, shifted), `phone` (self-made,
   shifted further).
+- At most 100 detections per image are kept for every model. Two test images have more than
+  100 GT instances, so the best reachable test mask AP under this protocol is below 1.0
+  (`results/eval/sanity_gt_as_pred/test/sanity.json`).
+- GT annotation ids are shifted to start at 1 when loaded (in memory only): pycocotools
+  counts a match to annotation id 0 as a false positive.
+- Evaluator sanity check: GT fed back as predictions scores mask AP = 1.0 on valid and test
+  (`python -m iiss.eval.sanity --eval-set test`).
 - Breakdowns: phone set by capture condition, classes present vs absent in train, things vs
   stuff.
 

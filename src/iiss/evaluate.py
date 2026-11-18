@@ -108,6 +108,7 @@ def evaluate_files(
     stuff_classes: list[str] | None = None,
     train_gt_file: str | Path | None = None,
     image_groups_csv: str | Path | None = None,
+    max_dets: tuple[int, int, int] | None = None,
 ) -> dict[str, Any]:
     """Evaluate one prediction file against one GT file and write all outputs."""
     gt_path, pred_path, out = resolve_path(gt_file), resolve_path(pred_file), resolve_path(out_dir)
@@ -123,7 +124,7 @@ def evaluate_files(
     if image_groups_csv:
         img_groups = image_groups_from_table(gt, pd.read_csv(resolve_path(image_groups_csv)))
 
-    ev = evaluate_all(gt, dt, cat_groups, img_groups)
+    ev = evaluate_all(gt, dt, cat_groups, img_groups, max_dets=max_dets)
 
     out.mkdir(parents=True, exist_ok=True)
     metrics: dict[str, Any] = {
@@ -136,6 +137,7 @@ def evaluate_files(
         "num_gt_instances": len(gt.getAnnIds()),
         "num_predictions": len(results),
         "category_groups": {k: len(v) for k, v in (cat_groups or {}).items()},
+        "cocoeval_max_dets": list(max_dets) if max_dets else [1, 10, 100],
     }
     for iou_type, entry in ev.items():
         entry["per_class"].to_csv(out / f"per_class_ap_{iou_type}.csv", index=False)

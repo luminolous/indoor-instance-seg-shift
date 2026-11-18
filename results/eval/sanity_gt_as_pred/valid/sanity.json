@@ -1,0 +1,61 @@
+{
+  "generated": "2026-11-18T08:54:55+07:00",
+  "eval_set": "valid",
+  "gt_instances": 2022,
+  "max_instances_per_image": 79,
+  "images_over_100_instances": 0,
+  "image_category_pairs_over_100": 0,
+  "uncapped_cocoeval_max_dets": [
+    1,
+    10,
+    101
+  ],
+  "checks": {
+    "segm_AP": 1.0,
+    "segm_AP50": 1.0,
+    "segm_AP[things]": 1.0,
+    "segm_AP[stuff]": 1.0,
+    "segm_AP[in_train]": 1.0,
+    "segm_AP[absent_in_train]": 0.9999999999999998
+  },
+  "passed": {
+    "segm_AP": true,
+    "segm_AP50": true,
+    "segm_AP[things]": true,
+    "segm_AP[stuff]": true,
+    "segm_AP[in_train]": true,
+    "segm_AP[absent_in_train]": true
+  },
+  "all_passed": true,
+  "uncapped_bbox_AP": 0.9903079666066485,
+  "standard_ceiling": {
+    "segm": {
+      "AP": 1.0,
+      "AP50": 1.0,
+      "AP75": 1.0,
+      "APs": 1.0,
+      "APm": 1.0,
+      "APl": 1.0,
+      "AR1": 0.6162531549409079,
+      "AR10": 0.9702166173703816,
+      "AR100": 1.0,
+      "ARs": 1.0,
+      "ARm": 1.0,
+      "ARl": 1.0
+    },
+    "bbox": {
+      "AP": 0.9903079666066485,
+      "AP50": 1.0,
+      "AP75": 1.0,
+      "APs": 0.9507096293328888,
+      "APm": 0.9912004528410756,
+      "APl": 1.0,
+      "AR1": 0.6127901651340192,
+      "AR10": 0.9640631477225221,
+      "AR100": 0.9933567197342427,
+      "ARs": 0.9623004246711142,
+      "ARm": 0.9927540397249947,
+      "ARl": 1.0
+    }
+  }
+}

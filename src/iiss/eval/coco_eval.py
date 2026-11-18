@@ -18,8 +18,10 @@ from __future__ import annotations
 import contextlib
 import copy
 import io
+import json
 import logging
 from collections.abc import Iterable, Mapping
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -46,15 +48,30 @@ METRIC_NAMES = (
 )
 
 
-def load_gt(path_or_dict: str | Mapping[str, Any]) -> COCO:
-    """Load a COCO GT object quietly from a path or an in-memory dict."""
+def load_gt(path_or_dict: str | Path | Mapping[str, Any]) -> COCO:
+    """Load a COCO GT object quietly from a path or an in-memory dict.
+
+    Annotation ids are shifted in memory so that the smallest id is 1. pycocotools stores the
+    matched GT id in ``dtMatches`` and ``accumulate()`` treats that value as a boolean, so a
+    detection matched to GT annotation id 0 is counted as a false positive. The v5 export
+    numbers annotations from 0. The shift only renames ids; files on disk are not modified.
+    """
+    if isinstance(path_or_dict, Mapping):
+        data = copy.deepcopy(dict(path_or_dict))
+    else:
+        data = json.loads(Path(path_or_dict).read_text(encoding="utf-8"))
+    anns = data.get("annotations", [])
+    if anns:
+        min_id = min(a["id"] for a in anns)
+        if min_id < 1:
+            offset = 1 - min_id
+            for a in anns:
+                a["id"] += offset
+            logger.debug("Shifted GT annotation ids by +%d (pycocotools id-0 issue)", offset)
     with contextlib.redirect_stdout(io.StringIO()):
-        if isinstance(path_or_dict, Mapping):
-            gt = COCO()
-            gt.dataset = copy.deepcopy(dict(path_or_dict))
-            gt.createIndex()
-        else:
-            gt = COCO(str(path_or_dict))
+        gt = COCO()
+        gt.dataset = data
+        gt.createIndex()
     return gt
 
 
@@ -73,11 +90,20 @@ def load_results(gt: COCO, results: str | list[dict[str, Any]]) -> COCO:
         return gt.loadRes(results if isinstance(results, list) else str(results))
 
 
-def run_cocoeval(gt: COCO, dt: COCO, iou_type: str) -> COCOeval:
-    """Run ``evaluate()`` and ``accumulate()`` over all images and categories."""
+def run_cocoeval(
+    gt: COCO, dt: COCO, iou_type: str, max_dets: tuple[int, int, int] | None = None
+) -> COCOeval:
+    """Run ``evaluate()`` and ``accumulate()`` over all images and categories.
+
+    ``max_dets`` overrides COCOeval's ``(1, 10, 100)``. Note that COCOeval applies the cap per
+    image **and per category**. Only the sanity check changes it; reported metrics use the
+    default.
+    """
     if iou_type not in ("segm", "bbox"):
         raise ValueError(f"iou_type must be 'segm' or 'bbox', got {iou_type!r}")
     ce = COCOeval(gt, dt, iouType=iou_type)
+    if max_dets is not None:
+        ce.params.maxDets = list(max_dets)
     with contextlib.redirect_stdout(io.StringIO()):
         ce.evaluate()
         ce.accumulate()
@@ -158,8 +184,9 @@ def stats_from_eval(ev: Mapping[str, Any], params: Any) -> dict[str, float]:
             s = s[np.where(np.isclose(iou, thr))[0]]
         return _mean_valid(s)
 
-    def ar(area: str = "all", max_det: int = 100) -> float:
-        return _mean_valid(recall[:, :, AREA_INDEX[area], md[max_det]])
+    def ar(area: str = "all", max_det: int | None = None) -> float:
+        m = m_last if max_det is None else md[max_det]
+        return _mean_valid(recall[:, :, AREA_INDEX[area], m])
 
     values = [
         ap(),
@@ -290,6 +317,7 @@ def evaluate_all(
     category_groups_: Mapping[str, list[int]] | None = None,
     image_groups: Mapping[str, list[int]] | None = None,
     iou_types: tuple[str, ...] = ("segm", "bbox"),
+    max_dets: tuple[int, int, int] | None = None,
 ) -> dict[str, Any]:
     """Full evaluation: summaries per IoU type, per-class AP and breakdowns.
 
@@ -298,7 +326,7 @@ def evaluate_all(
     """
     out: dict[str, Any] = {}
     for iou_type in iou_types:
-        ce = run_cocoeval(gt, dt, iou_type)
+        ce = run_cocoeval(gt, dt, iou_type, max_dets=max_dets)
         entry: dict[str, Any] = {"summary": summary(ce), "per_class": per_class_ap(ce, gt)}
         if category_groups_:
             entry["by_category_group"] = {

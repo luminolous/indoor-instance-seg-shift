@@ -16,8 +16,11 @@ Selection policy, identical for all models (recorded in the sidecar):
 
 - detections with an empty mask are dropped (they cannot be scored as segments);
 - detections below ``score_threshold`` are dropped;
-- at most ``max_dets`` detections per image are kept, highest score first. 100 matches the
-  largest ``maxDets`` used by COCOeval, so nothing COCOeval would read is lost.
+- at most ``max_dets`` detections per image are kept, highest score first (100, the usual COCO
+  submission limit). COCOeval itself caps at 100 per image *and category*, so this writer cap
+  is the stricter of the two. On the test split two images have more than 100 GT instances,
+  so the best reachable mask AP under this protocol is below 1.0 (see
+  ``results/eval/sanity_gt_as_pred/``).
 """
 
 from __future__ import annotations
