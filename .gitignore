@@ -231,7 +231,7 @@ dataset/panoptic-indoor-segmentation.v5i.coco-segmentation
 CLAUDE.md
 
 # Training artifacts
-runs/
+/runs/
 wandb/
 *.pt
 *.pth

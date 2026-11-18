@@ -1,0 +1,10 @@
+# Run m2f_s640_seed42: baseline (priority 3 of 9, see .agent/experiments.md).
+# Merged as configs/base.yaml -> configs/models/<model>.yaml -> this file.
+# Only the assigned variable lives here. Batch-size overrides (VRAM only) go here too,
+# with `train.accumulate` raised to keep the effective batch; log every override.
+run_id: m2f_s640_seed42
+model: m2f
+input_size: 640
+seed: 42
+role: baseline
+priority: 3

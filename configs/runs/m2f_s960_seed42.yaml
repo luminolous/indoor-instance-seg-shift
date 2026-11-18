@@ -1,0 +1,11 @@
+# Run m2f_s960_seed42: ablation (priority 9 of 9, see .agent/experiments.md).
+# Merged as configs/base.yaml -> configs/models/<model>.yaml -> this file.
+# Only the assigned variable lives here. Batch-size overrides (VRAM only) go here too,
+# with `train.accumulate` raised to keep the effective batch; log every override.
+# May not fit in 6 GB VRAM: run on Colab if vram_probe says so (log it).
+run_id: m2f_s960_seed42
+model: m2f
+input_size: 960
+seed: 42
+role: ablation
+priority: 9

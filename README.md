@@ -86,6 +86,11 @@ at both training and evaluation time. 640 is the baseline.
 
 Run id format: `{model}_s{S}_seed{seed}`, e.g. `yolo_s640_seed42`.
 
+One config per run in `configs/runs/<run_id>.yaml` (all 9 exist). Each sets only the model,
+`S`, the seed, its role and its priority (baselines first, then YOLO and Mask R-CNN ablations,
+then Mask2Former ablations). A batch-size change forced by VRAM is the only other allowed
+override, with gradient accumulation raised to keep the effective batch.
+
 Training protocol, identical for every run:
 
 - train on `train`, select checkpoints on `valid` only

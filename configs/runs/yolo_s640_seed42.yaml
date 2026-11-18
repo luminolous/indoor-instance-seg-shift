@@ -1,0 +1,10 @@
+# Run yolo_s640_seed42: baseline (priority 1 of 9, see .agent/experiments.md).
+# Merged as configs/base.yaml -> configs/models/<model>.yaml -> this file.
+# Only the assigned variable lives here. Batch-size overrides (VRAM only) go here too,
+# with `train.accumulate` raised to keep the effective batch; log every override.
+run_id: yolo_s640_seed42
+model: yolo
+input_size: 640
+seed: 42
+role: baseline
+priority: 1
