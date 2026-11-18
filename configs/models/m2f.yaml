@@ -1,6 +1,32 @@
-# Mask2Former Swin-T (transformer, mask classification). Training hyperparameters are added
-# with the model wrapper (roadmap P3).
+# Mask2Former Swin-T (transformer, mask classification).
 model: m2f
 family: transformer
 library: transformers
-weights: facebook/mask2former-swin-tiny-coco-instance  # COCO instance
+weights: facebook/mask2former-swin-tiny-coco-instance  # COCO instance; cached in runs/pretrained/hf
+
+# Class index = v5 category id (num_labels = data.num_classes = 75, plus Mask2Former's own
+# no-object class). Id 0 has no annotations and its score is zeroed at inference.
+
+train:
+  epochs: 50                 # same budget for every S; tentative until vram_probe
+  batch: 2                   # may shrink only if VRAM forces it (then raise accumulate)
+  accumulate: 1              # optimizer step every N batches; effective batch = batch * N
+  base_lr: 0.0001            # official 1e-4 @ batch 16 kept as-is for fine-tuning at batch 2
+  base_batch: 2
+  # Used lr = base_lr * (batch * accumulate) / base_batch (linear scaling rule). The run's
+  # config.yaml records the resulting `lr` and `effective_batch`.
+  weight_decay: 0.05         # 0 for norms, biases and embeddings
+  backbone_lr_multiplier: 0.1
+  poly_power: 0.9            # poly schedule over epochs * steps_per_epoch (official)
+  warmup_iters: 0            # official recipe has no warm-up
+  clip_grad_norm: 0.01       # official full-model gradient clipping
+  amp_dtype: bfloat16        # fp16 is less stable for the Mask2Former loss; Ada GPUs support bf16
+  augmentation: hflip        # shared torch dataset (random horizontal flip, p=0.5); the official
+                             # LSJ / large-scale jitter is not used (augmentation is not tuned)
+  workers: 4
+  eval_every: 5              # validate on valid every N epochs (and after the last epoch)
+  log_every: 20
+
+predict:
+  score_thresh: 0.0          # keep the top 100 query x class pairs (official instance inference)
+  mask_threshold: 0.5

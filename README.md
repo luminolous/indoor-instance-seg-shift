@@ -197,11 +197,11 @@ python -m iiss.data.eda                 # -> results/eda/ (or notebooks/data_exp
 python -m iiss.data.coco_to_yolo        # -> dataset/derived/yolo/ (--overwrite to rebuild)
 
 # 2. Train one run (2 h cap, resumable)
-python -m iiss.train --run configs/runs/yolo_s640_seed42.yaml          # yolo, maskrcnn implemented
+python -m iiss.train --run configs/runs/yolo_s640_seed42.yaml          # yolo, maskrcnn, m2f
 python -m iiss.train --run configs/runs/yolo_s640_seed42.yaml --resume # after a crash or sleep
 
 # 3. Export predictions and evaluate
-python -m iiss.predict --run configs/runs/yolo_s640_seed42.yaml --eval-set test   # yolo, maskrcnn implemented
+python -m iiss.predict --run configs/runs/yolo_s640_seed42.yaml --eval-set test
 python -m iiss.evaluate --pred runs/yolo_s640_seed42/predictions/test.json --eval-set test --run-id yolo_s640_seed42
 # -> results/eval/<run_id>/<eval_set>/ (metrics.json, per_class_ap_*.csv, summary.md)
 ```
@@ -216,12 +216,13 @@ python -m iiss.predict --model yolo --smoke --eval-set valid
 ```
 
 The 2-hour cap is checked after every batch; when it is reached the framework validates,
-saves `last.pt`/`best.pt` and stops, and the session is logged with `cap_hit=True`. The
-Mask2Former wrapper is planned.
+saves `last.pt`/`best.pt` and stops, and the session is logged with `cap_hit=True`.
+Mask R-CNN and Mask2Former share one PyTorch training loop (`iiss.models.torch_loop`); YOLO
+uses the Ultralytics trainer with a cap callback.
 
 The evaluated checkpoint is `weights/last.pt` (fixed schedule) for every model.
 `weights/best.pt` (best on `valid`: Ultralytics fitness for YOLO, `pycocotools` mask AP for
-Mask R-CNN) is saved and logged but not used in the main tables. When gradient accumulation is
+Mask R-CNN and Mask2Former) is saved and logged but not used in the main tables. When gradient accumulation is
 on, the learning rate is scaled linearly to the effective batch and recorded in the run's
 `config.yaml`.
 

@@ -7,6 +7,7 @@ from pathlib import Path
 
 _FORMAT = "%(asctime)s %(levelname)-7s %(name)s: %(message)s"
 _DATEFMT = "%Y-%m-%d %H:%M:%S"
+NOISY_LOGGERS = ("httpx", "httpx2", "httpcore", "urllib3")
 
 
 def setup_logging(level: int | str = logging.INFO, log_file: str | Path | None = None) -> None:
@@ -22,3 +23,6 @@ def setup_logging(level: int | str = logging.INFO, log_file: str | Path | None =
     logging.basicConfig(
         level=level, format=_FORMAT, datefmt=_DATEFMT, handlers=handlers, force=True
     )
+    # Third-party HTTP clients log every request at INFO (Hugging Face Hub downloads).
+    for name in NOISY_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
