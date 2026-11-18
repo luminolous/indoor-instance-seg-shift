@@ -194,16 +194,27 @@ python -m iiss.data.eda                 # -> results/eda/ (or notebooks/data_exp
 python -m iiss.data.coco_to_yolo        # -> dataset/derived/yolo/ (--overwrite to rebuild)
 
 # 2. Train one run (2 h cap, resumable)
-python -m iiss.train --run configs/runs/yolo_s640_seed42.yaml          # planned
+python -m iiss.train --run configs/runs/yolo_s640_seed42.yaml          # yolo implemented
+python -m iiss.train --run configs/runs/yolo_s640_seed42.yaml --resume # after a crash or sleep
 
 # 3. Export predictions and evaluate
-python -m iiss.predict --run configs/runs/yolo_s640_seed42.yaml --eval-set test   # planned
+python -m iiss.predict --run configs/runs/yolo_s640_seed42.yaml --eval-set test   # yolo implemented
 python -m iiss.evaluate --pred runs/yolo_s640_seed42/predictions/test.json --eval-set test --run-id yolo_s640_seed42
 # -> results/eval/<run_id>/<eval_set>/ (metrics.json, per_class_ap_*.csv, summary.md)
 ```
 
-Every CLI will support `--smoke` (16 train / 8 eval images, `S=320`, at most 2 epochs, output
-in `runs/smoke/`) for a quick end-to-end check.
+`iiss.train` and `iiss.predict` support `--smoke` (16 train / 8 eval images, `S=320`, at most
+2 epochs, 5-minute cap, output and GPU time log in `runs/smoke/`) for a quick end-to-end check,
+and `--model <key> --input-size <S>` instead of a run file:
+
+```powershell
+python -m iiss.train --model yolo --smoke
+python -m iiss.predict --model yolo --smoke --eval-set valid
+```
+
+The 2-hour cap is checked after every batch; when it is reached the framework validates,
+saves `last.pt`/`best.pt` and stops, and the session is logged with `cap_hit=True`. Mask R-CNN
+and Mask2Former wrappers are planned.
 
 Configs are merged in the order `configs/base.yaml` -> `configs/models/<model>.yaml` ->
 `configs/runs/<run_id>.yaml`. Each run writes its resolved config and `env.json` into its run

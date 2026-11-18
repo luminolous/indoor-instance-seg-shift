@@ -63,6 +63,40 @@ def make_run_id(model: str, input_size: int, seed: int) -> str:
     return f"{model}_s{input_size}_seed{seed}"
 
 
+def build_config(
+    model: str,
+    overrides: Mapping[str, Any] | None = None,
+    configs_dir: str | Path | None = None,
+    source: str = "<overrides>",
+) -> dict[str, Any]:
+    """Merge ``base.yaml``, ``models/<model>.yaml`` and ``overrides``, and add ``run_id``.
+
+    ``overrides`` plays the role of a run file (e.g. ``{"input_size": 320}``). If it sets
+    ``run_id`` explicitly, it must match the derived one.
+    """
+    configs_dir = Path(configs_dir) if configs_dir is not None else repo_root() / "configs"
+    overrides = dict(overrides or {})
+    if model not in VALID_MODELS:
+        raise ConfigError(f"{source}: unknown model {model!r}, expected one of {VALID_MODELS}")
+    model_path = configs_dir / "models" / f"{model}.yaml"
+    if not model_path.is_file():
+        raise ConfigError(f"Model config not found: {model_path}")
+
+    base_cfg = load_yaml(configs_dir / "base.yaml")
+    cfg = deep_merge(base_cfg, load_yaml(model_path), {**overrides, "model": model})
+
+    for key in ("input_size", "seed"):
+        if key not in cfg:
+            raise ConfigError(f"{source}: resolved config has no {key!r}")
+
+    expected = make_run_id(model, int(cfg["input_size"]), int(cfg["seed"]))
+    given = overrides.get("run_id")
+    if given is not None and given != expected:
+        raise ConfigError(f"{source}: run_id {given!r} does not match expected {expected!r}")
+    cfg["run_id"] = expected
+    return cfg
+
+
 def load_run_config(run_path: str | Path, configs_dir: str | Path | None = None) -> dict[str, Any]:
     """Load ``base.yaml``, ``models/<model>.yaml`` and the run file, and merge them.
 
@@ -71,34 +105,13 @@ def load_run_config(run_path: str | Path, configs_dir: str | Path | None = None)
         configs_dir: Directory holding ``base.yaml`` and ``models/``. Defaults to
             ``<repo>/configs``.
     """
-    configs_dir = Path(configs_dir) if configs_dir is not None else repo_root() / "configs"
     run_path = Path(run_path)
-
     run_cfg = load_yaml(run_path)
     model = run_cfg.get("model")
     if model is None:
         raise ConfigError(f"{run_path}: missing required key 'model'")
-    if model not in VALID_MODELS:
-        raise ConfigError(f"{run_path}: unknown model {model!r}, expected one of {VALID_MODELS}")
-
-    model_path = configs_dir / "models" / f"{model}.yaml"
-    if not model_path.is_file():
-        raise ConfigError(f"Model config not found: {model_path}")
-
-    base_cfg = load_yaml(configs_dir / "base.yaml")
-    cfg = deep_merge(base_cfg, load_yaml(model_path), run_cfg)
-
-    for key in ("input_size", "seed"):
-        if key not in cfg:
-            raise ConfigError(f"{run_path}: resolved config has no {key!r}")
-
-    expected = make_run_id(model, int(cfg["input_size"]), int(cfg["seed"]))
-    given = run_cfg.get("run_id")
-    if given is not None and given != expected:
-        raise ConfigError(f"{run_path}: run_id {given!r} does not match expected {expected!r}")
-    cfg["run_id"] = expected
-
-    logger.debug("Resolved config for %s from %s", expected, run_path)
+    cfg = build_config(model, run_cfg, configs_dir, source=str(run_path))
+    logger.debug("Resolved config for %s from %s", cfg["run_id"], run_path)
     return cfg
 
 

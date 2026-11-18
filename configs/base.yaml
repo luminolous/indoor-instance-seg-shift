@@ -13,6 +13,7 @@ paths:
   phone_root: dataset/manual-benchmark
   derived_root: dataset/derived
   runs_root: runs
+  pretrained_root: runs/pretrained  # downloaded COCO-pretrained weights
   results_root: results
   gpu_time_log: runs/gpu_time_log.csv
 
