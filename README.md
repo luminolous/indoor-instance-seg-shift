@@ -208,6 +208,7 @@ configs/            base.yaml, models/<model>.yaml, runs/<run_id>.yaml
 src/iiss/
   data/             COCO IO, validation, COCO -> YOLO conversion, phone-set importer, EXIF
   models/           one wrapper per model: build(), train(), predict()
+  eval/             COCO results JSON writer (RLE masks), pycocotools scoring
   analysis/         overlays, instance matching, failure tagging, small experiments
   utils/            config, paths, seeding, env snapshot, logging, run timer
 scripts/            thin one-off scripts (EDA, figure export)
