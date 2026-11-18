@@ -190,7 +190,7 @@ wheel. Re-run step 3.
 ```powershell
 # 1. Validate the dataset, run the EDA, convert COCO -> YOLO-seg
 python -m iiss.data.validate            # -> results/data_validation.md
-python -m iiss.data.eda                 # -> results/eda/
+python -m iiss.data.eda                 # -> results/eda/ (or notebooks/data_exploration.ipynb)
 python -m iiss.data.coco_to_yolo        # -> dataset/derived/yolo/ (--overwrite to rebuild)
 
 # 2. Train one run (2 h cap, resumable)
@@ -220,7 +220,7 @@ src/iiss/
   analysis/         overlays, instance matching, failure tagging, small experiments
   utils/            config, paths, seeding, env snapshot, logging, run timer
 scripts/            thin one-off scripts (EDA, figure export)
-notebooks/          exploration and report figures only
+notebooks/          thin runners over src/iiss (data_exploration, training, evaluation, ...)
 tests/              pytest, CPU-only, tiny fixtures
 dataset/            data (not committed); dataset/derived/ is generated
 runs/               checkpoints and raw logs (not committed)

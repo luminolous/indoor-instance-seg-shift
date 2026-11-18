@@ -1,6 +1,6 @@
 # EDA summary
 
-- Generated: 2026-11-18T00:31:13+07:00
+- Generated: 2026-11-18T09:01:08+07:00
 - Dataset root: `dataset/panoptic-indoor-segmentation.v5i.coco-segmentation`
 - Command: `python -m iiss.data.eda`
 - Source: annotation JSON only. Generated file; do not edit by hand.

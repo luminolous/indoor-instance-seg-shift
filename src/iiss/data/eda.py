@@ -27,17 +27,14 @@ from datetime import datetime
 from pathlib import Path
 
 import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
-matplotlib.use("Agg")
-
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
-import pandas as pd  # noqa: E402
-
-from iiss.data.coco import DEFAULT_ANNOTATION_FILE, CocoSplit, load_split  # noqa: E402
-from iiss.utils.config import load_yaml  # noqa: E402
-from iiss.utils.log import setup_logging  # noqa: E402
-from iiss.utils.paths import repo_root, resolve_path  # noqa: E402
+from iiss.data.coco import DEFAULT_ANNOTATION_FILE, CocoSplit, load_split
+from iiss.utils.config import load_yaml
+from iiss.utils.log import setup_logging
+from iiss.utils.paths import repo_root, resolve_path
 
 logger = logging.getLogger(__name__)
 
@@ -506,6 +503,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--annotation-file", default=base["data"]["annotation_file"])
     parser.add_argument("--out-dir", default=str(Path(base["paths"]["results_root"]) / "eda"))
     args = parser.parse_args(argv)
+    matplotlib.use("Agg")  # CLI only; the notebook keeps its inline backend
     setup_logging()
     run_eda(args.dataset_root, args.splits, args.out_dir, args.annotation_file)
     return 0

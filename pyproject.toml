@@ -39,6 +39,10 @@ wandb = ["wandb>=0.19,<1"]
 dev = [
     "ruff>=0.8",
     "pytest>=8.3,<10",
+    # notebooks (thin runners in notebooks/)
+    "ipykernel>=6.29,<8",
+    "nbformat>=5.10,<6",
+    "nbconvert>=7.16,<8",
 ]
 
 [tool.setuptools.packages.find]
