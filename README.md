@@ -191,7 +191,8 @@ python -m iiss.train --run configs/runs/yolo_s640_seed42.yaml          # planned
 
 # 3. Export predictions and evaluate
 python -m iiss.predict --run configs/runs/yolo_s640_seed42.yaml --eval-set test   # planned
-python -m iiss.evaluate --run yolo_s640_seed42 --eval-set test                    # planned
+python -m iiss.evaluate --pred runs/yolo_s640_seed42/predictions/test.json --eval-set test --run-id yolo_s640_seed42
+# -> results/eval/<run_id>/<eval_set>/ (metrics.json, per_class_ap_*.csv, summary.md)
 ```
 
 Every CLI will support `--smoke` (16 train / 8 eval images, `S=320`, at most 2 epochs, output

@@ -33,6 +33,55 @@ data:
     182169108_jpg.rf.205d9f1ed8f888006b8f97fc29eb8790.jpg: 270  # valid
     182169109_jpg.rf.0531e60eb6e404d9633ed0c23a381fe7.jpg: 90   # valid
 
+# Things vs stuff, used ONLY for evaluation breakdowns (never for training).
+# Source: the COCO panoptic "stuff" categories whose names exist in v5 (28 classes).
+# v5 names that are not COCO categories (fire-extinguisher, pan, paper, plug, scissor, st-,
+# stove-merged, toy, trash-bin, wall, wallet) are assumptions: only `wall` is treated as stuff,
+# the rest as things. Every class not listed here counts as a thing.
+stuff_classes:
+  # COCO panoptic stuff
+  - blanket
+  - cabinet-merged
+  - cardboard
+  - ceiling-merged
+  - counter
+  - curtain
+  - door-stuff
+  - floor-other-merged
+  - floor-wood
+  - flower
+  - food-other-merged
+  - light
+  - mirror-stuff
+  - paper-merged
+  - pillow
+  - rug-merged
+  - shelf
+  - stairs
+  - table-merged
+  - towel
+  - tree-merged
+  - wall-brick
+  - wall-other-merged
+  - wall-stone
+  - wall-tile
+  - wall-wood
+  - window-blind
+  - window-other
+  # assumption (not a COCO category)
+  - wall
+
+eval:
+  max_dets: 100
+  score_threshold: 0.0
+  # GT annotation file per eval set (relative to the repo root).
+  gt_files:
+    valid: dataset/panoptic-indoor-segmentation.v5i.coco-segmentation/valid/_annotations.coco.json
+    test: dataset/panoptic-indoor-segmentation.v5i.coco-segmentation/test/_annotations.coco.json
+    phone: dataset/derived/phone/annotations.coco.json
+  train_gt: dataset/panoptic-indoor-segmentation.v5i.coco-segmentation/train/_annotations.coco.json
+  results_root: results/eval
+
 # Evaluation sets: valid (in-distribution), test (original, shifted), phone (self-made).
 eval_sets: [valid, test, phone]
 
