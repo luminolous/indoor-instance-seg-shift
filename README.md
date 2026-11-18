@@ -102,6 +102,9 @@ Training protocol, identical for every run:
 - Metrics: mask mAP@[.50:.95], mAP@.50, APs/APm/APl, per-class AP; bbox mAP as secondary.
 - Evaluation sets: `valid` (in-distribution), `test` (original, shifted), `phone` (self-made,
   shifted further).
+- Mask resolution: every model predicts masks at input size `S`; they are upsampled
+  bilinearly to the original image resolution and thresholded at 0.5 before RLE encoding (no
+  YOLO `retina_masks`, no full-resolution pasting), so all models lose detail the same way.
 - At most 100 detections per image are kept for every model. Two test images have more than
   100 GT instances, so the best reachable test mask AP under this protocol is below 1.0
   (`results/eval/sanity_gt_as_pred/test/sanity.json`).
@@ -216,9 +219,11 @@ The 2-hour cap is checked after every batch; when it is reached the framework va
 saves `last.pt`/`best.pt` and stops, and the session is logged with `cap_hit=True`. The
 Mask2Former wrapper is planned.
 
-Checkpoint selection uses `valid` only: Ultralytics fitness for YOLO; for Mask R-CNN, mask AP
-from `pycocotools` on `valid` every `train.eval_every` epochs. Mask R-CNN predicts at long side
-`S` and upsamples its masks bilinearly to the original resolution before thresholding.
+The evaluated checkpoint is `weights/last.pt` (fixed schedule) for every model.
+`weights/best.pt` (best on `valid`: Ultralytics fitness for YOLO, `pycocotools` mask AP for
+Mask R-CNN) is saved and logged but not used in the main tables. When gradient accumulation is
+on, the learning rate is scaled linearly to the effective batch and recorded in the run's
+`config.yaml`.
 
 Configs are merged in the order `configs/base.yaml` -> `configs/models/<model>.yaml` ->
 `configs/runs/<run_id>.yaml`. Each run writes its resolved config and `env.json` into its run

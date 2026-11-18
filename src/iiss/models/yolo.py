@@ -7,7 +7,8 @@ Run directory (``<runs_root>/<run_id>/``), written by Ultralytics plus this wrap
 
     config.yaml, env.json      # resolved project config and environment (this wrapper)
     args.yaml, results.csv     # Ultralytics training args and per-epoch metrics
-    weights/last.pt, best.pt   # best = highest Ultralytics fitness on valid
+    weights/last.pt, best.pt   # last = evaluated checkpoint; best (Ultralytics fitness on
+                               # valid) is kept and logged only
     events.out.tfevents.*      # TensorBoard (if logging.tensorboard)
 
 Time cap: a callback checks :class:`~iiss.utils.timer.RunTimer` after every batch and every
@@ -27,6 +28,7 @@ from typing import Any
 import numpy as np
 import yaml
 from PIL import Image
+from ultralytics.utils.ops import letterbox_span
 
 from iiss.eval.results_json import Detection, resize_mask
 from iiss.models.common import (
@@ -202,17 +204,26 @@ def predict_image(
 ) -> list[Detection]:
     """Predict one image (annotation frame, RGB). Masks are returned at the original size.
 
+    Mask resolution policy (same for every model): masks are produced at input size S and
+    upsampled bilinearly to the original resolution, then thresholded at 0.5. Ultralytics'
+    ``retina_masks`` (masks computed at the original size) is never used. Ultralytics returns
+    the S-resolution masks already binarised (prototype logits > 0) in the letterboxed frame,
+    so the padding is cropped first, then the 0/1 mask is upsampled bilinearly.
+
     If ``speeds`` is given, Ultralytics' per-stage timing (ms) of this image is appended.
     """
     import torch
 
     pred_cfg = dict(cfg.get("predict") or {})
+    if pred_cfg.pop("retina_masks", False):
+        raise ValueError("retina_masks is not allowed: masks must be predicted at S")
     bgr = np.ascontiguousarray(np.asarray(image)[:, :, ::-1])
     result = model.predict(
         bgr,
         imgsz=int(cfg["input_size"]),
         max_det=int(cfg["eval"]["max_dets"]),
         quantize=16 if bool(cfg.get("amp", True)) and torch.cuda.is_available() else None,
+        retina_masks=False,
         verbose=False,
         **pred_cfg,
     )[0]
@@ -221,14 +232,15 @@ def predict_image(
     if result.masks is None or len(result.boxes) == 0:
         return []
     height, width = int(image_info["height"]), int(image_info["width"])
-    masks = result.masks.data.cpu().numpy()
+    masks = result.masks.data.cpu().numpy()  # (N, h_in, w_in), letterboxed input frame at S
+    top, left, content_h, content_w = letterbox_span(masks.shape[1:], (height, width))
     classes = result.boxes.cls.cpu().numpy().astype(int)
     scores = result.boxes.conf.cpu().numpy()
     dets = []
     for mask, cls, score in zip(masks, classes, scores, strict=True):
-        if mask.shape != (height, width):  # only without retina_masks
-            mask = resize_mask(mask.astype(np.float32), height, width)
-        dets.append(Detection(image_info["id"], int(cls), float(score), mask > 0.5))
+        content = mask[top : top + content_h, left : left + content_w].astype(np.float32)
+        full = resize_mask(content, height, width)  # bilinear, then >= 0.5
+        dets.append(Detection(image_info["id"], int(cls), float(score), full))
     return dets
 
 

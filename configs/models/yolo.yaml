@@ -10,7 +10,8 @@ weights: yolo11s-seg.pt  # COCO-pretrained; downloaded by Ultralytics into runs/
 train:
   epochs: 100       # same budget for every S; tentative until vram_probe (cap may cut 960 short)
   batch: 8          # may differ per S only if VRAM forces it (log it)
-  nbs: 64           # nominal batch: Ultralytics accumulates gradients up to 64 for any batch
+  nbs: 64           # nominal batch: Ultralytics accumulates gradients up to 64 for any batch,
+                    # so the effective batch is always 64 and lr0 needs no rescaling
   workers: 4
   patience: 100     # Ultralytics default early stopping
   optimizer: auto
@@ -20,4 +21,5 @@ train:
 predict:
   conf: 0.001        # low threshold, as Ultralytics uses for mAP validation
   iou: 0.7           # NMS IoU (Ultralytics default)
-  retina_masks: true # masks at the original image resolution (needed for RLE export)
+# Masks are always predicted at S and upsampled bilinearly to the original size by
+# iiss.models.yolo (retina_masks is forbidden; see .agent/experiments.md, Evaluation).

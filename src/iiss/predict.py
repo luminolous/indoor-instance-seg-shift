@@ -1,7 +1,9 @@
 """Export COCO results JSON for one run and eval set.
 
 ``python -m iiss.predict --run configs/runs/<run_id>.yaml --eval-set test`` reads
-``runs/<run_id>/weights/best.pt`` and writes ``runs/<run_id>/predictions/test.json`` (+ meta).
+``runs/<run_id>/weights/last.pt`` and writes ``runs/<run_id>/predictions/test.json`` (+ meta).
+``last.pt`` (fixed schedule) is the evaluated checkpoint for every model; ``best.pt`` is kept
+and logged only (pass it with ``--weights`` for a side analysis).
 Score it with ``python -m iiss.evaluate``. ``--smoke`` uses the smoke run and 8 images.
 """
 
@@ -22,7 +24,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Export predictions as COCO results JSON")
     add_run_args(parser)
     parser.add_argument("--eval-set", required=True, help="valid | test | phone")
-    parser.add_argument("--weights", help="checkpoint (default: <run_dir>/weights/best.pt)")
+    parser.add_argument("--weights", help="checkpoint (default: <run_dir>/weights/last.pt)")
     parser.add_argument("--out", help="results JSON (default: <run_dir>/predictions/<set>.json)")
     parser.add_argument("--limit", type=int, help="only the first N images by id")
     args = parser.parse_args(argv)
@@ -31,7 +33,7 @@ def main(argv: list[str] | None = None) -> int:
     cfg = config_from_args(args)
     if args.eval_set not in cfg["eval"]["gt_files"]:
         parser.error(f"unknown eval set {args.eval_set!r}")
-    weights = Path(args.weights) if args.weights else run_dir(cfg) / "weights" / "best.pt"
+    weights = Path(args.weights) if args.weights else run_dir(cfg) / "weights" / "last.pt"
     if not weights.is_file():
         parser.error(f"weights not found: {weights}")
     out = Path(args.out) if args.out else predictions_path(cfg, args.eval_set)

@@ -95,6 +95,13 @@ def test_lr_factor_warmup_and_milestones():
     assert maskrcnn.lr_factor(300, 100, cfg) == pytest.approx(0.01)
 
 
+def test_effective_lr_scales_with_accumulation():
+    cfg = {"batch": 2, "accumulate": 1, "base_lr": 0.0025, "base_batch": 2}
+    assert maskrcnn.effective_lr(cfg) == (2, pytest.approx(0.0025))
+    assert maskrcnn.effective_lr({**cfg, "batch": 1, "accumulate": 2}) == (2, pytest.approx(0.0025))
+    assert maskrcnn.effective_lr({**cfg, "accumulate": 4}) == (8, pytest.approx(0.01))
+
+
 def test_model_trains_and_predicts_on_cpu(tmp_path: Path):
     torch.manual_seed(0)
     gt = _write_split(tmp_path / "valid", [_ann(0, 0, 2, 8, 4, 48, 24)])

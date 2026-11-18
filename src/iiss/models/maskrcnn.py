@@ -8,14 +8,19 @@ Run directory (``<runs_root>/<run_id>/``)::
     config.yaml, env.json      # resolved project config and environment
     results.csv                # one row per epoch: losses, lr, valid segm/bbox AP
     events.out.tfevents.*      # TensorBoard (if logging.tensorboard)
-    weights/last.pt            # full training state after the last finished epoch (resume)
-    weights/best.pt            # model weights with the best valid mask AP
+    weights/last.pt            # full training state after the last epoch: resume, and the
+                               # checkpoint that is evaluated (fixed schedule)
+    weights/best.pt            # weights with the best valid mask AP; kept and logged only
     val/last.json              # predictions of the latest validation
 
 Time cap: :class:`~iiss.utils.timer.RunTimer` is checked after every iteration. When it is
 reached the epoch stops, the model is validated, ``last.pt``/``best.pt`` are written and
 training ends (the session is logged with ``cap_hit=True``). A resumed run restarts the epoch
 that was interrupted, from the state saved after the previous epoch.
+
+Learning rate: ``train.base_lr`` is defined for ``train.base_batch`` images per optimizer step
+and scaled linearly to the effective batch ``batch * accumulate``. The scaled ``lr`` and
+``effective_batch`` are written into the run's ``config.yaml``.
 
 Prediction: the image is resized to long side ``S``, masks come out at that size and are
 upsampled bilinearly to the original resolution before thresholding at 0.5. This avoids
@@ -46,6 +51,7 @@ from iiss.models.common import (
     quick_eval,
     run_dir,
 )
+from iiss.utils.config import deep_merge
 from iiss.utils.paths import resolve_path
 from iiss.utils.seed import seed_everything
 from iiss.utils.timer import RunTimer
@@ -206,6 +212,13 @@ def validate(cfg: Mapping[str, Any], model: torch.nn.Module, out_path: Path) -> 
     return quick_eval(cfg["eval"]["gt_files"]["valid"], out_path, limit)
 
 
+def effective_lr(train_cfg: Mapping[str, Any]) -> tuple[int, float]:
+    """``(effective_batch, lr)`` with ``base_lr`` scaled linearly from ``base_batch``."""
+    effective = int(train_cfg["batch"]) * max(1, int(train_cfg.get("accumulate", 1)))
+    base_batch = int(train_cfg.get("base_batch", effective))
+    return effective, float(train_cfg["base_lr"]) * effective / base_batch
+
+
 def train(cfg: Mapping[str, Any], resume: bool = False) -> Path:
     """Train (or resume) one run. Returns the run directory."""
     smoke = bool(cfg.get("smoke_mode"))
@@ -215,6 +228,8 @@ def train(cfg: Mapping[str, Any], resume: bool = False) -> Path:
         raise FileNotFoundError(f"cannot resume: {last} does not exist")
     if not resume and last.is_file() and not smoke:
         raise FileExistsError(f"{last} exists; pass --resume or delete {out} to start over")
+    effective_batch, lr = effective_lr(cfg["train"])
+    cfg = deep_merge(cfg, {"train": {"effective_batch": effective_batch, "lr": lr}})
     prepare_run_dir(cfg, fresh=smoke and not resume)
 
     tcfg = dict(cfg["train"])

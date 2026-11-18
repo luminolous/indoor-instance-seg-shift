@@ -79,17 +79,24 @@ def test_cap_callback_sets_trainer_stop(tmp_path: Path):
 
 
 class _FakeModel:
-    """Mimics ``YOLO.predict`` output with retina masks at the input size."""
+    """Mimics ``YOLO.predict``: binary masks in the (letterboxed) input frame.
 
-    def __init__(self) -> None:
+    Without ``masks`` the masks have the image's own size (no padding).
+    """
+
+    def __init__(self, masks: torch.Tensor | None = None) -> None:
         self.kwargs: dict = {}
+        self.masks = masks
 
     def predict(self, img: np.ndarray, **kwargs):
         self.kwargs = kwargs
-        h, w = img.shape[:2]
-        masks = torch.zeros(2, h, w)
-        masks[0, :2, :3] = 1
-        masks[1, 3:, 3:] = 1
+        if self.masks is not None:
+            masks = self.masks
+        else:
+            h, w = img.shape[:2]
+            masks = torch.zeros(2, h, w)
+            masks[0, :2, :3] = 1
+            masks[1, 3:, 3:] = 1
         boxes = _Boxes(torch.tensor([5.0, 7.0]), torch.tensor([0.9, 0.2]))
         result = SimpleNamespace(masks=SimpleNamespace(data=masks), boxes=boxes)
         return [result]
@@ -111,8 +118,30 @@ def test_predict_image_maps_classes_and_masks():
     assert [d.category_id for d in dets] == [5, 7]
     assert dets[0].image_id == 11 and dets[0].mask.shape == (4, 6) and dets[0].mask.dtype == bool
     assert dets[0].mask.sum() == 6
-    assert model.kwargs["imgsz"] == 320 and model.kwargs["retina_masks"] is True
+    assert model.kwargs["imgsz"] == 320 and model.kwargs["retina_masks"] is False
     assert model.kwargs["max_det"] == 100
+
+
+def test_predict_image_crops_letterbox_and_upsamples():
+    cfg = build_config("yolo", {"input_size": 320})
+    # A 6x4 (w x h) image letterboxed into 8x8: content 8x5 starting at row 1.
+    masks = torch.zeros(2, 8, 8)
+    masks[0, 1:6, :] = 1  # exactly the content area -> whole image
+    masks[1, 0, :] = 1  # padding row only -> nothing
+    model = _FakeModel(masks)
+    image = Image.new("RGB", (6, 4))
+    dets = yolo.predict_image(model, image, {"id": 1, "width": 6, "height": 4}, cfg)
+    assert dets[0].mask.shape == (4, 6) and dets[0].mask.all()
+    assert not dets[1].mask.any()
+
+
+def test_predict_image_rejects_retina_masks():
+    cfg = build_config("yolo", {"input_size": 320})
+    cfg["predict"]["retina_masks"] = True
+    with pytest.raises(ValueError, match="retina_masks"):
+        yolo.predict_image(
+            _FakeModel(), Image.new("RGB", (6, 4)), {"id": 1, "width": 6, "height": 4}, cfg
+        )
 
 
 def test_export_predictions_uses_annotation_frame(tmp_path: Path):
