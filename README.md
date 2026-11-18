@@ -201,11 +201,14 @@ python -m iiss.data.validate            # -> results/data_validation.md
 python -m iiss.data.eda                 # -> results/eda/ (or notebooks/data_exploration.ipynb)
 python -m iiss.data.coco_to_yolo        # -> dataset/derived/yolo/ (--overwrite to rebuild)
 
-# 2. Train one run (2 h cap, resumable)
+# 2. Before the first training: notebooks/vram_probe.ipynb (batch size per run,
+#    peak VRAM, training-time estimate vs the cap) -> results/vram_probe/
+
+# 3. Train one run (2 h cap, resumable)
 python -m iiss.train --run configs/runs/yolo_s640_seed42.yaml          # yolo, maskrcnn, m2f
 python -m iiss.train --run configs/runs/yolo_s640_seed42.yaml --resume # after a crash or sleep
 
-# 3. Export predictions and evaluate
+# 4. Export predictions and evaluate
 python -m iiss.predict --run configs/runs/yolo_s640_seed42.yaml --eval-set test
 python -m iiss.evaluate --pred runs/yolo_s640_seed42/predictions/test.json --eval-set test --run-id yolo_s640_seed42
 # -> results/eval/<run_id>/<eval_set>/ (metrics.json, per_class_ap_*.csv, summary.md)
