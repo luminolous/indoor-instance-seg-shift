@@ -204,7 +204,8 @@ python -m iiss.data.coco_to_yolo        # -> dataset/derived/yolo/ (--overwrite 
 # 2. Before the first training: notebooks/vram_probe.ipynb (batch size per run,
 #    peak VRAM, training-time estimate vs the cap) -> results/vram_probe/
 
-# 3. Train one run (2 h cap, resumable)
+# 3. Train one run (2 h cap, resumable): notebooks/train_{yolo,maskrcnn,mask2former}.ipynb
+#    (parameters S, SEED, RESUME, SMOKE; status, GPU time and curves), or the same from the CLI:
 python -m iiss.train --run configs/runs/yolo_s640_seed42.yaml          # yolo, maskrcnn, m2f
 python -m iiss.train --run configs/runs/yolo_s640_seed42.yaml --resume # after a crash or sleep
 
