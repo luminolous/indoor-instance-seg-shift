@@ -302,7 +302,9 @@ split object), each with a mechanism-based explanation and one small experiment 
 - Per run: `results.csv` or framework equivalent, TensorBoard logs, resolved `config.yaml`,
   `env.json` (package versions, GPU, git commit).
 - `runs/gpu_time_log.csv`: one row per training session (run id, start, end, wall-clock
-  seconds, GPU, peak VRAM, cap hit, status).
+  seconds, GPU, peak VRAM, cap hit, status). A session that is hard-killed (power loss,
+  Task Manager) is logged as `status=killed` when the run is next started, from a heartbeat
+  file written every 10 s, so its time still counts against the cap.
 - `logbook.md`: problems and decisions, written by the author.
 
 ## License
