@@ -1,0 +1,10 @@
+run_id,batch,accumulate,effective_batch,max_fit_batch,peak_train_mb,s_per_iter,infer_ms,est_train_h,cap_risk,note
+yolo_s320_seed42,16,1,64,16,1624.0,0.098,44.0,0.27,False,
+yolo_s640_seed42,8,1,64,8,3374.0,0.171,56.9,0.5,False,
+yolo_s960_seed42,4,1,64,4,5470.0,0.211,218.2,1.59,False,
+maskrcnn_s320_seed42,2,1,2,4,1860.0,0.168,169.6,0.32,False,
+maskrcnn_s640_seed42,2,1,2,4,2084.0,0.214,156.3,0.37,False,
+maskrcnn_s960_seed42,2,1,2,4,2692.0,0.309,317.5,0.59,False,
+m2f_s320_seed42,2,1,2,4,1924.0,0.225,96.2,0.67,False,
+m2f_s640_seed42,2,1,2,2,5342.0,0.399,115.7,1.16,False,
+m2f_s960_seed42,1,2,2,1,5432.0,0.437,360.6,2.58,True,

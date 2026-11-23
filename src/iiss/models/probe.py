@@ -16,17 +16,29 @@ combination "fits" if it does not run out of memory and its training peak is at 
 ``budget_mb``. YOLO: Ultralytics halves the batch automatically after an out-of-memory error;
 the probe reports that as ``oom`` instead of hiding it.
 
+Each probe runs in its own Python subprocess (``probe_matrix(isolate=True)``): a CUDA
+out-of-memory error can leave the process's CUDA state unusable (seen with Ultralytics'
+automatic batch reduction, where ``empty_cache`` itself failed), and a fresh process also gives
+clean peak-memory numbers. On Windows the driver can spill into shared system memory instead
+of failing, so a peak above the card's VRAM (``spill``) is reported and never counts as fitting;
+larger batches of the same model x S are skipped once one exceeds the budget.
+
 Estimated training time = epochs x iterations per epoch x seconds per iteration + validation
 time (valid images x inference ms, once per validation). It is an estimate for planning only.
 """
 
 from __future__ import annotations
 
+import argparse
 import gc
 import importlib
 import itertools
+import json
 import logging
 import math
+import subprocess
+import sys
+import tempfile
 import time
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
@@ -59,10 +71,27 @@ class ProbeResult:
     infer_ms: float | None
     peak_infer_mb: float | None
     note: str = ""
+    gpu_total_mb: float | None = None
+    spill: bool = False  # training peak above the physical VRAM (Windows shared memory)
 
 
 # ---------------------------------------------------------------------------------------------
 # helpers
+
+
+OOM_MARKERS = ("out of memory", "CUBLAS_STATUS_ALLOC_FAILED", "cudaErrorMemoryAllocation")
+
+
+def is_oom(error: BaseException | str) -> bool:
+    """True for CUDA out-of-memory errors, whatever exception class torch raises."""
+    text = str(error).lower()
+    return any(m.lower() in text for m in OOM_MARKERS)
+
+
+def _gpu_total_mb() -> float | None:
+    if not torch.cuda.is_available():
+        return None
+    return round(torch.cuda.get_device_properties(0).total_memory / 2**20, 1)
 
 
 def _cuda_reset() -> None:
@@ -177,9 +206,10 @@ def probe_torch(
             lambda image, info: predict_fn(net, image, info), images
         )
         net = predict_fn = None
-    except torch.OutOfMemoryError as exc:
+    except Exception as exc:
+        if not is_oom(exc):
+            raise
         result.oom = True
-        result.peak_train_mb = _peak_mb()
         result.note = f"CUDA out of memory: {str(exc).splitlines()[0][:120]}"
         logger.warning("%s S=%d batch=%d: out of memory", cfg["model"], cfg["input_size"], batch)
     finally:
@@ -219,6 +249,9 @@ def probe_yolo(
             torch.cuda.synchronize()
         state["times"].append(time.perf_counter())
         state["batch_seen"] = trainer.batch_size
+        if int(trainer.batch_size) != batch:  # Ultralytics halved the batch after an OOM
+            trainer.stop = True
+            return
         if len(state["times"]) >= iters and not trainer.stop:
             state["peak"] = _peak_mb()
             trainer.stop = True
@@ -240,7 +273,9 @@ def probe_yolo(
     _cuda_reset()
     try:
         model.train(**kwargs)
-    except torch.OutOfMemoryError as exc:
+    except Exception as exc:
+        if not is_oom(exc):
+            raise
         result.oom = True
         result.note = f"CUDA out of memory: {str(exc).splitlines()[0][:120]}"
     times = state["times"]
@@ -280,6 +315,58 @@ def probe(
     logger.info("Probing %s S=%s batch=%d", cfg["model"], cfg["input_size"], batch)
     t0 = time.monotonic()
     res = fn(cfg, batch, iters, warmup, infer_images)
+    res.gpu_total_mb = _gpu_total_mb()
+    if res.gpu_total_mb and res.peak_train_mb and res.peak_train_mb > res.gpu_total_mb:
+        res.spill = True
+        res.note = (res.note + "; " if res.note else "") + "peak above physical VRAM (spill)"
+    logger.info("-> %s (%.0f s)", asdict(res), time.monotonic() - t0)
+    return res
+
+
+def run_isolated(
+    cfg: Mapping[str, Any],
+    batch: int,
+    iters: int = 20,
+    warmup: int = 3,
+    infer_images: int = 10,
+    timeout_s: float = 1200,
+) -> ProbeResult:
+    """Run :func:`probe` in a fresh Python process and return its result.
+
+    A crash of the child (for example a CUDA error that is not caught) becomes a result with
+    ``oom=True`` if its output mentions running out of memory, otherwise a note with the error.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        cfg_path, out_path = Path(tmp) / "cfg.json", Path(tmp) / "result.json"
+        cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+        cmd = [
+            sys.executable, "-m", "iiss.models.probe", "--cfg-json", str(cfg_path),
+            "--batch", str(batch), "--iters", str(iters), "--warmup", str(warmup),
+            "--infer-images", str(infer_images), "--out-json", str(out_path),
+        ]  # fmt: skip
+        logger.info("Probing %s S=%s batch=%d (subprocess)", cfg["model"], cfg["input_size"], batch)
+        t0 = time.monotonic()
+        proc = None
+        try:
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=timeout_s,
+            )  # fmt: skip
+            output = (proc.stdout or "") + (proc.stderr or "")
+        except subprocess.TimeoutExpired:
+            output = f"timeout after {timeout_s:.0f} s"
+        if out_path.is_file():
+            res = ProbeResult(**json.loads(out_path.read_text(encoding="utf-8")))
+        else:
+            lines = [line for line in output.strip().splitlines() if line.strip()] or ["?"]
+            res = ProbeResult(
+                cfg["model"], int(cfg["input_size"]), batch, 0, is_oom(output),
+                None, None, None, None, f"probe process failed: {lines[-1][:160]}",
+            )  # fmt: skip
+            logger.warning(
+                "Probe process failed (exit %s); last output:\n%s",
+                None if proc is None else proc.returncode, "\n".join(lines[-15:]),
+            )  # fmt: skip
     logger.info("-> %s (%.0f s)", asdict(res), time.monotonic() - t0)
     return res
 
@@ -288,25 +375,31 @@ def probe_matrix(
     configs: Iterable[Mapping[str, Any]],
     batches: Mapping[str, Iterable[int]],
     out_csv: str | Path | None = None,
+    budget_mb: float = DEFAULT_BUDGET_MB,
+    isolate: bool = True,
     **kwargs: Any,
 ) -> pd.DataFrame:
     """Probe every config with every candidate batch of its model; append rows to ``out_csv``.
 
-    Batches are tried from small to large; once one runs out of memory the larger ones for
-    that model x S are skipped (recorded as ``oom`` with a note).
+    Batches are tried from small to large. Once one runs out of memory, spills into shared
+    memory or exceeds ``budget_mb``, the larger ones for that model x S are skipped (recorded
+    with a note). ``isolate`` runs every probe in its own subprocess (recommended on GPU).
     """
     rows = []
     for cfg in configs:
-        oom_seen = False
+        stop_reason = None
         for batch in sorted(batches[cfg["model"]]):
-            if oom_seen:
+            if stop_reason is not None:
                 res = ProbeResult(
-                    cfg["model"], int(cfg["input_size"]), batch, 0, True,
-                    None, None, None, None, "skipped: a smaller batch ran out of memory",
+                    cfg["model"], int(cfg["input_size"]), batch, 0, False,
+                    None, None, None, None, f"skipped: {stop_reason}",
                 )  # fmt: skip
             else:
-                res = probe(cfg, batch, **kwargs)
-                oom_seen = res.oom
+                res = run_isolated(cfg, batch, **kwargs) if isolate else probe(cfg, batch, **kwargs)
+                if res.oom:
+                    stop_reason = f"batch {batch} ran out of memory"
+                elif res.spill or (res.peak_train_mb or 0) > budget_mb:
+                    stop_reason = f"batch {batch} already exceeds the {budget_mb:.0f} MB budget"
             row = asdict(res)
             if out_csv is not None:
                 path = resolve_path(out_csv)
@@ -350,7 +443,8 @@ def recommend(
         sub = results[
             (results["model"] == cfg["model"]) & (results["input_size"] == cfg["input_size"])
         ]
-        ok = sub[(~sub["oom"]) & (sub["peak_train_mb"] <= budget_mb)]
+        spill = sub.get("spill", pd.Series(False, index=sub.index)).fillna(False).astype(bool)
+        ok = sub[(~sub["oom"].astype(bool)) & (~spill) & (sub["peak_train_mb"] <= budget_mb)]
         tcfg = cfg["train"]
         target = int(tcfg["batch"]) * max(1, int(tcfg.get("accumulate", 1)))
         if cfg["model"] == "yolo":
@@ -386,3 +480,26 @@ def recommend(
             }
         )
     return pd.DataFrame(rows)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Child entry point used by :func:`run_isolated`."""
+    from iiss.utils.log import setup_logging
+
+    parser = argparse.ArgumentParser(description="Probe one model x S x batch (internal)")
+    parser.add_argument("--cfg-json", required=True)
+    parser.add_argument("--batch", type=int, required=True)
+    parser.add_argument("--iters", type=int, default=20)
+    parser.add_argument("--warmup", type=int, default=3)
+    parser.add_argument("--infer-images", type=int, default=10)
+    parser.add_argument("--out-json", required=True)
+    args = parser.parse_args(argv)
+    setup_logging()
+    cfg = json.loads(Path(args.cfg_json).read_text(encoding="utf-8"))
+    res = probe(cfg, args.batch, args.iters, args.warmup, args.infer_images)
+    Path(args.out_json).write_text(json.dumps(asdict(res)), encoding="utf-8")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

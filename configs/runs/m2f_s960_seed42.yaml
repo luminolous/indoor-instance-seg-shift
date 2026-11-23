@@ -2,10 +2,17 @@
 # Merged as configs/base.yaml -> configs/models/<model>.yaml -> this file.
 # Only the assigned variable lives here. Batch-size overrides (VRAM only) go here too,
 # with `train.accumulate` raised to keep the effective batch; log every override.
-# May not fit in 6 GB VRAM: run on Colab if vram_probe says so (log it).
 run_id: m2f_s960_seed42
 model: m2f
 input_size: 960
 seed: 42
 role: ablation
 priority: 9
+
+# VRAM override (vram_probe 2026-11-23, results/vram_probe/probe.csv): batch 2 peaks at
+# 10192 MB (shared-memory spill, 9.5 s/iter); batch 1 peaks at 5432 MB. accumulate 2 keeps
+# the effective batch 2, so the lr is unchanged. Estimated 2.6 h for 50 epochs (> 2 h cap).
+# User decision 2026-11-23: train locally and accept the cap hit (report it with the results).
+train:
+  batch: 1
+  accumulate: 2

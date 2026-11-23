@@ -1,0 +1,28 @@
+model,input_size,batch,iters_timed,oom,peak_train_mb,s_per_iter,infer_ms,peak_infer_mb,note,gpu_total_mb,spill
+yolo,320,4,16,False,656.0,0.068,48.8,130.0,,6140.5,False
+yolo,320,8,16,False,916.0,0.079,48.5,130.0,,6140.5,False
+yolo,320,16,16,False,1624.0,0.098,44.0,130.0,,6140.5,False
+yolo,640,4,16,False,2320.0,0.097,61.1,412.0,,6140.5,False
+yolo,640,8,16,False,3374.0,0.171,56.9,412.0,,6140.5,False
+yolo,640,16,16,False,5764.0,0.341,56.5,408.0,,6140.5,False
+yolo,960,4,16,False,5470.0,0.211,218.2,412.0,,6140.5,False
+yolo,960,8,16,False,7882.0,1.551,195.6,358.0,peak above physical VRAM (spill),6140.5,True
+yolo,960,16,0,False,,,,,skipped: batch 8 already exceeds the 5600 MB budget,,False
+maskrcnn,320,1,17,False,1132.0,0.1,166.4,672.0,,6140.5,False
+maskrcnn,320,2,17,False,1860.0,0.168,169.6,662.0,,6140.5,False
+maskrcnn,320,4,17,False,3450.0,0.306,162.9,688.0,,6140.5,False
+maskrcnn,640,1,17,False,1368.0,0.12,157.1,806.0,,6140.5,False
+maskrcnn,640,2,17,False,2084.0,0.214,156.3,812.0,,6140.5,False
+maskrcnn,640,4,17,False,4020.0,0.412,158.5,782.0,,6140.5,False
+maskrcnn,960,1,17,False,2138.0,0.161,345.6,1030.0,,6140.5,False
+maskrcnn,960,2,17,False,2692.0,0.309,317.5,1026.0,,6140.5,False
+maskrcnn,960,4,17,False,4864.0,0.615,343.1,1046.0,,6140.5,False
+m2f,320,1,17,False,1484.0,0.198,94.8,964.0,,6140.5,False
+m2f,320,2,17,False,1924.0,0.225,96.2,892.0,,6140.5,False
+m2f,320,4,17,False,3354.0,0.296,97.0,940.0,,6140.5,False
+m2f,640,1,17,False,2924.0,0.255,113.8,1522.0,,6140.5,False
+m2f,640,2,17,False,5342.0,0.399,115.7,1428.0,,6140.5,False
+m2f,640,4,17,False,9812.0,6.227,173.7,1488.0,peak above physical VRAM (spill),6140.5,True
+m2f,960,1,17,False,5432.0,0.437,360.6,2592.0,,6140.5,False
+m2f,960,2,17,False,10192.0,9.514,477.7,2640.0,peak above physical VRAM (spill),6140.5,True
+m2f,960,4,0,False,,,,,skipped: batch 2 already exceeds the 5600 MB budget,,False

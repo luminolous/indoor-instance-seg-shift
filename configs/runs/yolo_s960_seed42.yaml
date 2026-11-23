@@ -8,3 +8,9 @@ input_size: 960
 seed: 42
 role: ablation
 priority: 5
+
+# VRAM override (vram_probe 2026-11-23, results/vram_probe/probe.csv): batch 8 peaks at
+# 7882 MB (above the 6141 MB card, shared-memory spill, 1.55 s/iter); batch 4 peaks at 5470 MB.
+# Ultralytics accumulates to nbs=64 by itself, so the effective batch stays 64.
+train:
+  batch: 4
