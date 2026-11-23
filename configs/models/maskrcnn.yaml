@@ -8,7 +8,7 @@ weights: maskrcnn_resnet50_fpn_v2  # torchvision COCO_V1 weights, cached in runs
 # background slot, so num_classes = data.num_classes (75) and no id remapping is needed.
 
 train:
-  epochs: 24                 # same budget for every S; tentative until vram_probe
+  epochs: 24                 # same budget for every S; locked 2026-11-24 (user)
   batch: 2                   # may shrink only if VRAM forces it (then raise accumulate)
   accumulate: 1              # optimizer step every N batches; effective batch = batch * N
   base_lr: 0.0025            # lr for base_batch images/step (torchvision ref 0.02 @ 16, scaled)

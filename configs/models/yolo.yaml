@@ -8,7 +8,7 @@ weights: yolo11s-seg.pt  # COCO-pretrained; downloaded by Ultralytics into runs/
 # including augmentation (not tuned in this project). imgsz, seed, amp, deterministic,
 # project and name are filled in from the run config by iiss.models.yolo.
 train:
-  epochs: 100       # same budget for every S; tentative until vram_probe (cap may cut 960 short)
+  epochs: 100       # same budget for every S; locked 2026-11-24 (user)
   batch: 8          # may differ per S only if VRAM forces it (log it)
   nbs: 64           # nominal batch: Ultralytics accumulates gradients up to 64 for any batch,
                     # so the effective batch is always 64 and lr0 needs no rescaling
