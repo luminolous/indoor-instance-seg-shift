@@ -105,6 +105,18 @@ eval:
   train_gt: dataset/panoptic-indoor-segmentation.v5i.coco-segmentation/train/_annotations.coco.json
   results_root: results/eval
 
+# Instance matching and failure tags of the phone set (iiss.analysis.failures).
+failure_analysis:
+  score_threshold: 0.25  # predictions below are not shown and not matched
+  match_iou: 0.5
+  good_iou: 0.75         # matched instances below this IoU count as a mask failure
+  partial_iou: 0.1       # below this IoU a prediction is not related to the object
+  # Photos with a known annotation defect: shown, but not proposed as failure candidates.
+  label_issues:
+    IMG_20261124_172304.jpg: floor on the right side is not annotated
+    IMG_20261124_172021.jpg: one towel tip is labelled inside door-stuff
+    IMG_20261124_172800.jpg: ceiling is labelled wall-other-merged (ceiling-merged in 172758)
+
 # Evaluation sets: valid (in-distribution), test (original, shifted), phone (self-made).
 eval_sets: [valid, test, phone]
 

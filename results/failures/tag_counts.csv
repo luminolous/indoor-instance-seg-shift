@@ -1,0 +1,10 @@
+run_id,ok,mask_leak,mask_incomplete,split,merged,wrong_class,low_score,missed
+yolo_s320_seed42,27,6,3,0,5,35,14,76
+yolo_s640_seed42,27,6,4,0,5,25,24,75
+yolo_s960_seed42,18,6,3,1,7,17,26,88
+maskrcnn_s320_seed42,29,16,11,2,14,39,5,50
+maskrcnn_s640_seed42,36,17,8,3,10,40,5,47
+maskrcnn_s960_seed42,35,18,5,3,11,40,4,50
+m2f_s320_seed42,41,17,5,0,7,39,12,45
+m2f_s640_seed42,35,12,3,2,13,39,15,47
+m2f_s960_seed42,37,18,4,1,11,42,14,39
