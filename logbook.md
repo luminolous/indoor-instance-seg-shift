@@ -14,20 +14,20 @@ Format entri:
 
 ## Ringkasan GPU time
 
-Diambil dari `runs/gpu_time_log.csv`, tidak diketik manual.
+Diambil dari `runs/gpu_time_log.csv`
 
-| Run id | Sesi | GPU time (jam) | Cap hit | Catatan |
-|---|---|---|---|---|
-| `yolo_s640_seed42` | 1 | 0.35 | tidak |  |
-| `maskrcnn_s640_seed42` | 1 | 0.42 | tidak |  |
-| `m2f_s640_seed42` | 1 | 1.32 | tidak |  |
-| `yolo_s320_seed42` | 1 | 0.20 | tidak |  |
-| `yolo_s960_seed42` | 1 | 0.72 | tidak |  |
-| `maskrcnn_s320_seed42` | 1 | 0.37 | tidak |  |
-| `maskrcnn_s960_seed42` | 1 | 0.65 | tidak |  |
-| `m2f_s320_seed42` | 1 | 0.75 | tidak |  |
-| `m2f_s960_seed42` | 1 | 2.05 | ya | berhenti di ~10/50 epoch (VRAM spill) |
-| **Total** | 9 | 6.80 | | |
+| Run id                   | Sesi | GPU time (jam) | Cap hit | Catatan                               |
+| ------------------------ | ---- | -------------- | ------- | ------------------------------------- |
+| `yolo_s640_seed42`     | 1    | 0.35           | tidak   |                                       |
+| `maskrcnn_s640_seed42` | 1    | 0.42           | tidak   |                                       |
+| `m2f_s640_seed42`      | 1    | 1.32           | tidak   |                                       |
+| `yolo_s320_seed42`     | 1    | 0.20           | tidak   |                                       |
+| `yolo_s960_seed42`     | 1    | 0.72           | tidak   |                                       |
+| `maskrcnn_s320_seed42` | 1    | 0.37           | tidak   |                                       |
+| `maskrcnn_s960_seed42` | 1    | 0.65           | tidak   |                                       |
+| `m2f_s320_seed42`      | 1    | 0.75           | tidak   |                                       |
+| `m2f_s960_seed42`      | 1    | 2.05           | ya      | berhenti di ~10/50 epoch (VRAM spill) |
+| **Total**          | 9    | 6.80           |         |                                       |
 
 ## Entri
 

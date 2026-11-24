@@ -79,6 +79,10 @@ phone_import:
   export_dir: roboflow-export
   export_splits: [valid, test]  # split forced by Roboflow, merged into one set
   metadata_file: metadata.csv
+  # Checked by python -m iiss.data.phone_metadata. Every condition except `normal` is "hard".
+  conditions: [normal, low_light, backlight, occlusion, extreme_angle]
+  min_photos: 40  # assignment part 1
+  min_hard: 10
   # Occluded objects were annotated as several pieces. No photo shows more than one object of
   # these classes, so all annotations of such a class in one image become one annotation with
   # several polygons (user decision 2026-11-24). Every other class is left as annotated.
