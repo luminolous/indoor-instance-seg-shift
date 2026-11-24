@@ -12,8 +12,9 @@ Outputs in ``results/eval/<run_id>/<eval_set>/`` (or ``--out``):
 - ``summary.md``           the main numbers in Markdown
 
 Breakdowns: things vs stuff (``stuff_classes`` in the base config), classes present vs absent
-in train (``eval.train_gt``), and, with ``--image-groups``, image groups such as the phone-set
-capture conditions (CSV with ``filename`` and ``condition`` columns).
+in train (``eval.train_gt``), and image groups such as the phone-set capture conditions (CSV with
+``filename`` and ``condition`` columns; default per eval set from ``eval.image_groups``, override
+with ``--image-groups``). Each group also gets ``per_class_ap_<iou>_<group>.csv``.
 """
 
 from __future__ import annotations
@@ -141,7 +142,10 @@ def evaluate_files(
     }
     for iou_type, entry in ev.items():
         entry["per_class"].to_csv(out / f"per_class_ap_{iou_type}.csv", index=False)
-        metrics[iou_type] = _clean({k: v for k, v in entry.items() if k != "per_class"})
+        for group, table in entry.get("per_class_by_image_group", {}).items():
+            table.to_csv(out / f"per_class_ap_{iou_type}_{group}.csv", index=False)
+        tables = ("per_class", "per_class_by_image_group")
+        metrics[iou_type] = _clean({k: v for k, v in entry.items() if k not in tables})
     (out / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
     (out / "summary.md").write_text(render_summary_md(metrics), encoding="utf-8")
     logger.info(
@@ -158,6 +162,11 @@ def _display(path: Path) -> str:
         return path.relative_to(repo_root()).as_posix()
     except ValueError:
         return path.as_posix()
+
+
+def _default_groups(ecfg: dict[str, Any], args: argparse.Namespace) -> str | None:
+    """Configured image groups of the eval set; none when a custom GT file is given."""
+    return None if args.gt else ecfg.get("image_groups", {}).get(args.eval_set)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -188,7 +197,7 @@ def main(argv: list[str] | None = None) -> int:
         eval_set=args.eval_set,
         stuff_classes=None if args.no_breakdowns else base.get("stuff_classes", []),
         train_gt_file=None if args.no_breakdowns else ecfg.get("train_gt"),
-        image_groups_csv=args.image_groups,
+        image_groups_csv=args.image_groups or _default_groups(ecfg, args),
     )
     return 0
 

@@ -74,3 +74,23 @@ def test_run_sanity_passes_and_reports_ceiling(tmp_path: Path):
     assert report["standard_ceiling"]["segm"]["AP"] < 1.0
     assert (tmp_path / "out" / "sanity.json").is_file()
     assert not (tmp_path / "out" / "uncapped" / "gt_as_predictions.json").exists()
+
+
+def test_group_without_gt_is_skipped(tmp_path: Path):
+    """The phone set has no class that is absent from train; that group has no AP."""
+    gt = {
+        "images": [{"id": 1, "file_name": "a.jpg", "width": 50, "height": 50}],
+        "annotations": [
+            {
+                "id": 1, "image_id": 1, "category_id": 1, "iscrowd": 0, "area": 400,
+                "bbox": [5, 5, 20, 20], "segmentation": [[5, 5, 25, 5, 25, 25, 5, 25]],
+            }
+        ],
+        "categories": [{"id": 1, "name": "bed"}, {"id": 2, "name": "wall"}],
+    }  # fmt: skip
+    path = tmp_path / "gt.json"
+    path.write_text(json.dumps(gt))
+    report = run_sanity(path, tmp_path / "out", "phone", ["wall"], path)
+    assert report["all_passed"]
+    assert "segm_AP[in_train]" in report["checks"]
+    assert "segm_AP[absent_in_train]" not in report["checks"]

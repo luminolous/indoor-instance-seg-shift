@@ -11,7 +11,8 @@ Two evaluations are written for each eval set:
 ``uncapped/``
     No detection is dropped: the writer keeps every GT-as-prediction and COCOeval's largest
     ``maxDets`` is raised above the largest per-image instance count. **Pass criterion:** mask
-    AP, AP50 and every category-group AP are exactly 1.0.
+    AP, AP50 and every category-group AP are exactly 1.0. Groups without GT instances (e.g.
+    ``absent_in_train`` on the phone set) have no AP and are skipped.
 
 ``standard/``
     The protocol used for every model (writer: top 100 per image; COCOeval: maxDets 1/10/100,
@@ -140,6 +141,9 @@ def run_sanity(
         "segm_AP50": uncapped["segm"]["summary"]["AP50"],
     }
     for name, g in (uncapped["segm"].get("by_category_group") or {}).items():
+        if g["AP"] is None:
+            logger.info("Skipping group %s: no GT instances in %s", name, eval_set)
+            continue
         checks[f"segm_AP[{name}]"] = g["AP"]
     passed = {
         k: v is not None and math.isclose(v, 1.0, abs_tol=TOLERANCE) for k, v in checks.items()

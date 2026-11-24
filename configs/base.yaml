@@ -99,6 +99,9 @@ eval:
     valid: dataset/panoptic-indoor-segmentation.v5i.coco-segmentation/valid/_annotations.coco.json
     test: dataset/panoptic-indoor-segmentation.v5i.coco-segmentation/test/_annotations.coco.json
     phone: dataset/derived/phone/annotations.coco.json
+  # Image groups scored separately (CSV with filename,condition), per eval set.
+  image_groups:
+    phone: dataset/manual-benchmark/metadata.csv
   train_gt: dataset/panoptic-indoor-segmentation.v5i.coco-segmentation/train/_annotations.coco.json
   results_root: results/eval
 

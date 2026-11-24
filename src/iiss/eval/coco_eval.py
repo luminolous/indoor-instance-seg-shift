@@ -323,7 +323,7 @@ def evaluate_all(
     """Full evaluation: summaries per IoU type, per-class AP and breakdowns.
 
     Returns ``{"segm": {"summary": ..., "per_class": DataFrame, "by_category_group": ...,
-    "by_image_group": ...}, "bbox": {...}}``.
+    "by_image_group": ..., "per_class_by_image_group": {name: DataFrame}}, "bbox": {...}}``.
     """
     out: dict[str, Any] = {}
     for iou_type in iou_types:
@@ -335,9 +335,16 @@ def evaluate_all(
                 for name, ids in category_groups_.items()
             }
         if image_groups:
+            per_class = {n: per_class_ap(ce, gt, ids) for n, ids in image_groups.items()}
             entry["by_image_group"] = {
-                name: {"n_images": len(ids), **subset_summary(ce, img_ids=ids)}
+                name: {
+                    "n_images": len(ids),
+                    "n_gt": int(per_class[name]["n_gt"].sum()),
+                    "n_categories": int((per_class[name]["n_gt"] > 0).sum()),
+                    **subset_summary(ce, img_ids=ids),
+                }
                 for name, ids in image_groups.items()
             }
+            entry["per_class_by_image_group"] = per_class
         out[iou_type] = entry
     return out
