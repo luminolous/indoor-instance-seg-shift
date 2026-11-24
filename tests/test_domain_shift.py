@@ -11,6 +11,7 @@ from iiss.analysis.domain_shift import (
     build_tables,
     common_classes,
     load_results,
+    load_tables,
     parse_run_id,
     run_ids,
     write_tables,
@@ -183,3 +184,16 @@ def test_write_tables_marks_capped_runs(root: Path, tmp_path: Path):
     assert main["cap_hit"].all() and (main["epochs_done"] == 10).all()
     groups = pd.read_csv(out / "category_groups.csv")
     assert groups.loc[groups["group"] == "absent_in_train", "AP"].isna().all()
+
+
+def test_load_tables_round_trip_and_stale_check(root: Path, tmp_path: Path):
+    status = {RUN: {"epochs_done": 10, "epochs_planned": 50, "cap_hit": True}}
+    out = write_tables(build_tables(root, status, [RUN]), tmp_path / "out")
+    tables = load_tables(out, root, [RUN])
+    assert tables["common_classes"] == ["bed", "chair"]
+    assert tables["main_results"]["cap_hit"].all()
+    valid = tables["main_results"].set_index("eval_set").loc["valid"]
+    assert valid["AP_common"] == pytest.approx(0.3, abs=1e-12) and valid["epochs_done"] == 10
+    _write_set(root, RUN, "test", {"bed": 0.25, "chair": 0.1})  # scored again
+    with pytest.raises(AggregationError, match="does not match"):
+        load_tables(out, root, [RUN])

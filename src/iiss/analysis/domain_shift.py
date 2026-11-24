@@ -26,6 +26,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import logging
 import math
@@ -417,11 +418,18 @@ def build_tables(
     }
 
 
+TABLES = ("main_results", "domain_shift", "conditions", "category_groups", "per_class_ap")
+
+
+def _to_csv(table: pd.DataFrame, path: Path | None = None) -> str | None:
+    return table.to_csv(path, index=False, float_format="%.6f")
+
+
 def write_tables(tables: Mapping[str, Any], out_dir: str | Path) -> Path:
     out = resolve_path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    for name in ("main_results", "domain_shift", "conditions", "category_groups", "per_class_ap"):
-        tables[name].to_csv(out / f"{name}.csv", index=False, float_format="%.6f")
+    for name in TABLES:
+        _to_csv(tables[name], out / f"{name}.csv")
     text = render_summary(
         tables["main_results"],
         tables["domain_shift"],
@@ -431,6 +439,33 @@ def write_tables(tables: Mapping[str, Any], out_dir: str | Path) -> Path:
     )
     (out / "summary.md").write_text(text, encoding="utf-8")
     return out
+
+
+def load_tables(
+    summary_dir: str | Path, eval_root: str | Path, ids: Sequence[str] | None = None
+) -> dict[str, Any]:
+    """Read the tables of :func:`write_tables` and check them against ``eval_root``.
+
+    Needs only committed files (no run directories). Metrics come back in full precision, the
+    run status (epochs, cap flag) from the CSV. Raises when a table does not match the
+    evaluation files any more, so that figures are never drawn from stale tables.
+    """
+    folder = resolve_path(summary_dir)
+    fresh = build_tables(eval_root, ids=ids)
+    for name in TABLES:
+        saved = pd.read_csv(folder / f"{name}.csv")
+        # the same CSV round trip, so that rounding and None/NaN do not count as differences
+        expected = pd.read_csv(io.StringIO(_to_csv(fresh[name])))
+        try:
+            pd.testing.assert_frame_equal(saved[list(expected.columns)], expected)
+        except (AssertionError, KeyError) as e:
+            raise AggregationError(
+                f"{name}.csv does not match {eval_root}; "
+                "run `python -m iiss.analysis.domain_shift` again"
+            ) from e
+        extra = [c for c in saved.columns if c not in fresh[name]]
+        fresh[name] = fresh[name].assign(**{c: saved[c].to_numpy() for c in extra})
+    return fresh
 
 
 def training_status(ids: Iterable[str]) -> dict[str, dict[str, Any]]:
