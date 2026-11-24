@@ -72,6 +72,21 @@ stuff_classes:
   # assumption (not a COCO category)
   - wall
 
+# Importer of the self-made phone test set (python -m iiss.data.phone). Directories and files are
+# relative to paths.phone_root.
+phone_import:
+  originals_dir: originals
+  export_dir: roboflow-export
+  export_splits: [valid, test]  # split forced by Roboflow, merged into one set
+  metadata_file: metadata.csv
+  # Occluded objects were annotated as several pieces. No photo shows more than one object of
+  # these classes, so all annotations of such a class in one image become one annotation with
+  # several polygons (user decision 2026-11-24). Every other class is left as annotated.
+  merge_fragments:
+    - chair
+    - door-stuff
+    - floor-other-merged
+
 eval:
   max_dets: 100
   score_threshold: 0.0

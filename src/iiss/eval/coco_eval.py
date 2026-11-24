@@ -21,7 +21,7 @@ import io
 import json
 import logging
 from collections.abc import Iterable, Mapping
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import numpy as np
@@ -288,7 +288,8 @@ def image_groups_from_table(
 ) -> dict[str, list[int]]:
     """Map a ``file name -> group`` table (e.g. phone ``metadata.csv``) to image-id groups.
 
-    Matching is by exact file name, falling back to the file stem (Roboflow renames uploads to
+    Matching is by file name without directories (the phone GT stores relative paths to
+    ``originals/``), falling back to the file stem (Roboflow renames uploads to
     ``<stem>_<ext>.rf.<hash>.<ext>``, so the original stem is the prefix before ``_<ext>.rf.``).
     Fails loudly on GT images that cannot be matched.
     """
@@ -297,7 +298,7 @@ def image_groups_from_table(
     groups: dict[str, list[int]] = {}
     unmatched = []
     for img in gt.dataset["images"]:
-        fname = img["file_name"]
+        fname = PurePosixPath(img["file_name"]).name
         grp = lookup.get(fname)
         if grp is None and ".rf." in fname:
             stem = fname.split(".rf.")[0].rsplit("_", 1)[0]
