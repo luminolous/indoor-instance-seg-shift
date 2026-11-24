@@ -1,0 +1,13 @@
+gt_id,name,target,grid,iou_gt_box,iou_pred_box,model_iou
+21,book,True,14,0.9805,0.9751,0.6248
+21,book,True,28,0.9893,0.9852,0.6248
+21,book,True,56,0.9929,0.9882,0.6248
+21,book,True,112,0.9934,0.9894,0.6248
+22,table-merged,False,14,0.8788,,
+22,table-merged,False,28,0.9428,,
+22,table-merged,False,56,0.9622,,
+22,table-merged,False,112,0.9716,,
+23,table-merged,False,14,0.9491,0.8774,0.5412
+23,table-merged,False,28,0.9697,0.9102,0.5412
+23,table-merged,False,56,0.9792,0.9229,0.5412
+23,table-merged,False,112,0.9891,0.9182,0.5412
