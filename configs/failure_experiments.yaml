@@ -1,0 +1,66 @@
+# The five failure-analysis experiments (iiss.analysis.failure_experiments). Inference only, one
+# photo each. Hypotheses, variants and refutation criteria were written before any variant was run.
+# `targets` = GT annotation ids of the phone set. "Matched" = score >= 0.25 and IoU >= 0.5.
+
+input_size: 640
+models: [yolo, maskrcnn, m2f]
+
+experiments:
+  low_light:
+    photo: IMG_20261124_172832.jpg
+    targets: [165]  # chair
+    focus: yolo
+    failure: chair missed in low light (mean gray value 12.7 of 255)
+    hypothesis: >-
+      The contrast of the chair is too low for the convolutional features of YOLO, so no class
+      score passes the threshold, although the shape is still present in the pixels.
+    refuted_if: the chair is not matched in any brightened variant
+    variants:
+      gamma: [0.67, 0.45, 0.33, 0.25]  # out = in ** gamma, below 1 brightens
+      clahe: [2.0, 8.0]                # clip limits, 8x8 tiles, on the L channel
+
+  zoom_out:
+    photo: IMG_20261124_171925.jpg
+    targets: [12, 11]  # both pillows; 12 is the one predicted as wallet
+    focus: maskrcnn
+    failure: pillow predicted as wallet
+    hypothesis: >-
+      The RoI classifier also relies on object scale. In train a pillow covers 3.2 % of the image
+      (median box), a wallet 16.5 %, so a large box-shaped object is pushed towards wallet.
+    refuted_if: the pillow is still predicted as wallet at every scale
+    variants:
+      scale: [0.75, 0.5, 0.35, 0.25]   # photo shrunk on a gray canvas of the same size
+
+  mask_grid:
+    photo: IMG_20261124_172112.jpg
+    targets: [21]  # book
+    focus: maskrcnn
+    failure: book mask incomplete with a ragged edge (IoU 0.62)
+    hypothesis: >-
+      The fixed 28x28 mask grid is too coarse for an object that covers 40 % of the image.
+    refuted_if: the GT mask sent through a 28x28 grid keeps IoU >= 0.95
+    variants:
+      grid: [14, 28, 56, 112]
+
+  crop:
+    photo: IMG_20261124_172426.jpg
+    targets: [84]  # light
+    focus: maskrcnn
+    failure: light missed by all three models (0.18 % of the image, about 27 px at S = 640)
+    hypothesis: The object is too small in the feature maps.
+    refuted_if: the light is not matched in any crop, for the model in question
+    variants:
+      crop: [0.5, 0.25, 0.125]         # side of the crop around the light, share of the photo
+
+  wall_edge:
+    photo: IMG_20261124_172438.jpg
+    targets: [93, 94]  # two walls
+    focus: m2f
+    failure: two walls predicted as one instance
+    hypothesis: >-
+      The corner between the walls has almost no visible edge, so one query covers both walls.
+    refuted_if: the walls stay merged although a clear edge is added
+    variants:
+      clahe: [4.0]
+      line: [0.003, 0.01, 0.03]        # black line on the GT boundary, width / image side
+      darken: [0.7, 0.4]               # brightness factor of the second wall
