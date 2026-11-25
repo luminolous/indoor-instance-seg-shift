@@ -64,7 +64,14 @@ def label_point(mask: np.ndarray) -> tuple[int, int]:
     return int(x), int(y)
 
 
-def draw_panel(ax: plt.Axes, photo: np.ndarray, items: Sequence[Item], title: str) -> None:
+def draw_panel(
+    ax: plt.Axes,
+    photo: np.ndarray,
+    items: Sequence[Item],
+    title: str,
+    label_size: float = 6,
+    title_size: float = 8,
+) -> None:
     canvas = photo.astype(np.float32).copy()
     ordered = sorted((i for i in items if i.mask.any()), key=lambda i: -int(i.mask.sum()))
     for item in ordered:
@@ -85,14 +92,14 @@ def draw_panel(ax: plt.Axes, photo: np.ndarray, items: Sequence[Item], title: st
             {"left": 4, "right": width - 4}.get(align, x),
             min(max(y, 0.03 * height), 0.97 * height),
             item.label,
-            fontsize=6,
+            fontsize=label_size,
             color=INK,
             ha=align,
             va="center",
             clip_on=True,
             bbox={"facecolor": SURFACE, "alpha": 0.8, "pad": 1, "linewidth": 0},
         )
-    ax.set_title(title, fontsize=8, loc="left", color=INK)
+    ax.set_title(title, fontsize=title_size, loc="left", color=INK)
     ax.set_axis_off()
 
 

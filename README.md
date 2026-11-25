@@ -215,6 +215,7 @@ Each one imports from `src/iiss/`. Read them in this order.
 | 6 | [`results_domain_shift.ipynb`](notebooks/results_domain_shift.ipynb) | tables and figures of this README |
 | 7 | [`failure_analysis.ipynb`](notebooks/failure_analysis.ipynb) | instance matching, failure tags, gallery |
 | 8 | [`failure_experiments.ipynb`](notebooks/failure_experiments.ipynb) | the five experiments |
+| 9 | [`live_demo.ipynb`](notebooks/live_demo.ipynb) | three models on any photo, side by side, with an adjustable score threshold (no saved outputs) |
 
 ## Reproducing
 
@@ -312,6 +313,7 @@ indoor-instance-seg-shift/
 │   ├── eval/              results JSON writer, pycocotools scoring, batch evaluation, sanity check
 │   ├── analysis/          result tables and figures, failure matching and experiments
 │   ├── utils/             config, paths, seeding, environment snapshot, GPU timer
+│   ├── demo.py            live demo on any photo (EXIF orientation, overlays, per-class AP)
 │   └── train.py, predict.py, evaluate.py   command line entry points
 ├── configs/               base.yaml, models/, runs/ (one file per run), failure_experiments.yaml
 ├── notebooks/             the runners above
