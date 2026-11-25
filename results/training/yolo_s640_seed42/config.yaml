@@ -1,0 +1,97 @@
+seed: 42
+deterministic: false
+amp: true
+time_cap_hours: 2.0
+paths:
+  dataset_root: dataset/panoptic-indoor-segmentation.v5i.coco-segmentation
+  phone_root: dataset/manual-benchmark
+  derived_root: dataset/derived
+  runs_root: runs
+  pretrained_root: runs/pretrained
+  results_root: results
+  gpu_time_log: runs/gpu_time_log.csv
+data:
+  num_classes: 75
+  splits:
+    train: train
+    valid: valid
+    test: test
+  annotation_file: _annotations.coco.json
+  rotation_fixes:
+    182169107_jpg.rf.c9b1bbecf1474a5b36a6df197c30dfed.jpg: 90
+    182169121_jpg.rf.eb0ccb71d0ea38adf1e38bf9c02a4a15.jpg: 270
+    182169108_jpg.rf.205d9f1ed8f888006b8f97fc29eb8790.jpg: 270
+    182169109_jpg.rf.0531e60eb6e404d9633ed0c23a381fe7.jpg: 90
+stuff_classes:
+- blanket
+- cabinet-merged
+- cardboard
+- ceiling-merged
+- counter
+- curtain
+- door-stuff
+- floor-other-merged
+- floor-wood
+- flower
+- food-other-merged
+- light
+- mirror-stuff
+- paper-merged
+- pillow
+- rug-merged
+- shelf
+- stairs
+- table-merged
+- towel
+- tree-merged
+- wall-brick
+- wall-other-merged
+- wall-stone
+- wall-tile
+- wall-wood
+- window-blind
+- window-other
+- wall
+eval:
+  max_dets: 100
+  score_threshold: 0.0
+  gt_files:
+    valid: dataset/panoptic-indoor-segmentation.v5i.coco-segmentation/valid/_annotations.coco.json
+    test: dataset/panoptic-indoor-segmentation.v5i.coco-segmentation/test/_annotations.coco.json
+    phone: dataset/derived/phone/annotations.coco.json
+  train_gt: dataset/panoptic-indoor-segmentation.v5i.coco-segmentation/train/_annotations.coco.json
+  results_root: results/eval
+eval_sets:
+- valid
+- test
+- phone
+smoke:
+  max_train_images: 16
+  max_eval_images: 8
+  max_epochs: 2
+  max_iters: 50
+  input_size: 320
+  max_minutes: 5
+  output_dir: runs/smoke
+logging:
+  tensorboard: true
+  wandb: false
+model: yolo
+family: one-stage-cnn
+library: ultralytics
+weights: yolo11s-seg.pt
+train:
+  epochs: 100
+  batch: 8
+  nbs: 64
+  workers: 4
+  patience: 100
+  optimizer: auto
+  plots: true
+predict:
+  conf: 0.001
+  iou: 0.7
+run_id: yolo_s640_seed42
+input_size: 640
+role: baseline
+priority: 1
