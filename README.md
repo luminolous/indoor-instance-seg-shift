@@ -322,8 +322,10 @@ indoor-instance-seg-shift/
 │   ├── eval/              metrics per run and evaluation set
 │   ├── summary/           aggregated tables and figures
 │   └── failures/          tags, experiments and figures
-├── docs/evidence/         Roboflow annotation screenshots
-├── logbook.md             problems and decisions (Indonesian)
+├── docs/
+│   ├── evidence/          Roboflow annotation screenshots
+│   ├── logbook.md         problems and decisions (Indonesian)
+│   └── ai-usage.md        AI usage declaration (Indonesian)
 ├── dataset/               not tracked
 └── runs/                  checkpoints, training logs (not tracked)
 ```
@@ -343,8 +345,9 @@ Problems we hit, and what the code does about them.
 
 ## Process evidence
 
-- **GPU time:** [`results/training/gpu_time_log.csv`](results/training/gpu_time_log.csv), one row per training session. The cost table above and the summary in [`logbook.md`](logbook.md) come from it.
-- **Problems and decisions:** [`logbook.md`](logbook.md), written in Indonesian.
+- **GPU time:** [`results/training/gpu_time_log.csv`](results/training/gpu_time_log.csv), one row per training session. The cost table above and the summary in [`docs/logbook.md`](docs/logbook.md) come from it.
+- **Problems and decisions:** [`docs/logbook.md`](docs/logbook.md), written in Indonesian.
+- **AI usage:** [`docs/ai-usage.md`](docs/ai-usage.md): tools, main prompts, and cases where the AI was wrong.
 - **Training logs:** [`results/training/<run_id>/`](results/training) holds unedited copies of `results.csv`, the TensorBoard event file, the resolved `config.yaml`, and `env.json` for all nine runs. The executed notebooks of the six ablation runs are in [`notebooks/runs/`](notebooks/runs). Checkpoints and predictions stay in `runs/`, which Git does not track.
 - **Annotation in Roboflow:** screenshots of [171922](docs/evidence/roboflow/annotation_IMG_20261124_171922.webp) (4 annotations) and [172303](docs/evidence/roboflow/annotation_IMG_20261124_172303.webp) (12 annotations before the importer merges the `chair` and `floor-other-merged` fragments, 4 after).
 - **EXIF of the phone photos:** [`results/phone_exif.csv`](results/phone_exif.csv), [`results/phone_metadata_report.md`](results/phone_metadata_report.md).

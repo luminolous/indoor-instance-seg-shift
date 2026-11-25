@@ -115,7 +115,7 @@ Diambil dari `runs/gpu_time_log.csv`
 
 ### 2026-11-24: m2f_s960 kena cap karena VRAM spill
 
-- **Masalah:** Peak memory mencapai 9918 MB, di atas VRAM 6 GB. Windows memindahkan sebagian ke shared memory mulai epoch 5, dan waktu per epoch naik dari ~207–515 s menjadi ~950–990 s. Cap menghentikan training di sekitar epoch 10 dari 50, sebelum LR poly turun. Segm AP valid saat berhenti 0.306 dan masih naik. Probe meremehkan peak karena hanya menjalankan beberapa iterasi.
+- **Masalah:** Peak memory mencapai 9918 MB, di atas VRAM 6 GB. Waktu per epoch naik dari 207 s (epoch 1) ke 439 sampai 515 s (epoch 2 sampai 4), lalu 943 sampai 994 s (epoch 5 sampai 9). Penyebab paling mungkin adalah spill ke shared memory Windows, tapi saya tidak mencatat kapan peak terjadi. Cap menghentikan training di sekitar epoch 10 dari 50, sebelum LR poly turun. Segm AP valid saat berhenti 0.306 dan masih naik. Probe meremehkan peak karena hanya menjalankan beberapa iterasi.
 - **Keputusan:** Saya menerima ini sebagai keterbatasan dan tidak menjalankan ulang di Colab. Angka 960 Mask2Former dilaporkan dengan catatan undertrained (~10/50 epoch), sehingga tidak setara dengan 320 dan 640. Run tidak di-resume karena cap bersifat final.
 - **Bukti:** `runs/m2f_s960_seed42/`, `runs/gpu_time_log.csv`
 
@@ -142,3 +142,43 @@ Diambil dari `runs/gpu_time_log.csv`
 - **Masalah:** Objek yang tertutup sebagian tersimpan sebagai beberapa anotasi terpisah. Contohnya, kursi di bawah tas pada `IMG_20261124_172304` menjadi 7 anotasi `chair`, dan lantainya 5 anotasi `floor-other-merged`. Evaluasi COCO menghitung setiap potongan sebagai objek sendiri, sehingga recall turun walaupun model benar.
 - **Keputusan:** Setiap foto di set ini paling banyak punya satu kursi, satu pintu, dan satu lantai. Jadi importer menggabungkan semua potongan `chair`, `door-stuff`, dan `floor-other-merged` dalam satu gambar menjadi satu anotasi multi-polygon. Ada 15 pasangan yang terdampak: `chair` di 172303 (5), 172304 (7), 172306 (2), 172624 (4), 172627 (3); `door-stuff` di 172021 (4), 172401 (3); `floor-other-merged` di 171944 (2), 172303 (5), 172304 (5), 172306 (4), 172556 (2), 172624 (3), 172627 (3), 172647 (2). Kelas lain tidak digabung karena bisa berisi beberapa objek asli. Export mentah tetap tidak diubah.
 - **Bukti:** overlay `IMG_20261124_172304` dan `172021`, jumlah anotasi per gambar dari JSON export
+
+### 2026-11-24: Import test set HP
+
+- **Masalah:** Export Roboflow terdiri dari 2 split dan masih berisi potongan objek.
+- **Keputusan:** Importer (`python -m iiss.data.phone`) menggabungkan split dan potongan: 40 gambar, 205 anotasi menjadi 166 (15 pasangan digabung). EXIF terbaca di 40/40 foto, satu kamera, tanpa GPS. Validator metadata PASS (12 foto sulit), dengan warning bahwa backlight, occlusion, dan extreme angle tidak ada.
+- **Bukti:** `results/phone_import_report.md`, `results/phone_exif.csv`, `results/phone_metadata_report.md`, commit f8ddb9d, e51e1fc
+
+### 2026-11-24: Evaluasi 9 run di valid, test, dan phone
+
+- **Masalah:** Ada 27 job predict + evaluate. Valid, test, dan phone punya jumlah kelas berbeda (58 / 69 / 17), jadi AP mentahnya tidak setara.
+- **Keputusan:** Saya menjalankan `notebooks/predict_and_evaluate.ipynb` (27/27 job ok, sekitar 2,2 jam). Untuk domain shift saya membandingkan AP pada 17 kelas yang ada di ketiga set. Waktu inferensi tidak saya laporkan karena laptop menjalankan beban lain saat itu.
+- **Bukti:** `results/eval/`, `results/summary/`, commit 2113cb2, 09c2299
+
+### 2026-11-24: Hasil utama
+
+- **Masalah:** Mask AP 17 kelas bersama (valid / test / phone) di S=640: Mask2Former 26.7 / 21.3 / 19.8, YOLO11s-seg 20.0 / 16.0 / 7.2, Mask R-CNN 15.6 / 13.8 / 8.4. YOLO turun paling jauh ke phone (-64%), Mask R-CNN paling stabil (-46%). YOLO mencapai puncak di 640, Mask R-CNN naik sampai 960. Di foto low light, YOLO 640 dan 960 mendapat AP 0.0.
+- **Keputusan:** Kesimpulan di README saya tulis dengan tiga batasan: satu seed per run, phone set hanya 166 instance, dan Mask2Former 960 undertrained.
+- **Bukti:** `results/summary/summary.md`, `results/summary/domain_shift.csv`
+
+### 2026-11-24: Matching untuk analisis kegagalan
+
+- **Keputusan:** Saya mencocokkan instance phone dengan prediksi pada score ≥ 0.25 dan IoU ≥ 0.5, lalu memberi satu dari 8 tag (`ok`, `mask_leak`, `mask_incomplete`, `split`, `merged`, `wrong_class`, `low_score`, `missed`). Jumlah match sama dengan COCOeval di 9/9 run. Threshold 0.25 tidak dikalibrasi antar model.
+- **Bukti:** `results/failures/instances.csv`, `results/failures/tag_counts.csv`, commit c804e04
+
+### 2026-11-25: Label phone tidak direvisi
+
+- **Masalah:** Overlay menunjukkan 3 kesalahan label: lantai kanan di 172304 tidak dianotasi, ujung handuk masuk `door-stuff` di 172021, dan plafon di 172800 berlabel `wall-other-merged`.
+- **Keputusan:** Saya tidak merevisi GT dan mencatat ketiganya sebagai keterbatasan di README.
+- **Bukti:** `configs/base.yaml` (`failure_analysis.label_issues`), README bagian Limitations
+
+### 2026-11-25: Lima eksperimen kegagalan
+
+- **Masalah:** Tugas meminta 5 foto gagal, penjelasan berbasis mekanisme, dan satu eksperimen kecil per foto.
+- **Keputusan:** Claude menyusun draf 5 foto dan hipotesis, lalu saya menyetujuinya. Hipotesis dan kriteria penolakan saya kunci di `configs/failure_experiments.yaml` sebelum eksperimen jalan. Semua eksperimen inference-only di S=640. Hasilnya: low light, grid mask 28×28, dan crop ditolak; zoom out tidak didukung; wall edge didukung untuk Mask2Former.
+- **Bukti:** `results/failures/experiments.csv`, `results/failures/mask_grid.csv`, `results/failures/exp_*.jpg`, commit 32d7c3b, 779600c
+
+### 2026-11-25: README final dan bukti proses
+
+- **Keputusan:** README memuat tabel hasil (144 angka dicek ke CSV), analisis kegagalan, dan keterbatasan. Saya menyalin log training asli (`results.csv`, TensorBoard, `config.yaml`, `env.json`) ke `results/training/` dan menaruh 2 screenshot anotasi di `docs/evidence/roboflow/`. Logbook saya pindah ke `docs/`, dan deklarasi AI ada di `docs/ai-usage.md`.
+- **Bukti:** `README.md`, `results/training/`, commit dbd1af9, a7b5082
