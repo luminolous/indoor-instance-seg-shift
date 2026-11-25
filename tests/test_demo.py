@@ -10,6 +10,7 @@ import pytest
 from PIL import Image
 
 from iiss import demo
+from iiss.data.coco import CocoSplit
 from iiss.eval.results_json import Detection
 
 NAMES = {1: "bed", 2: "chair"}
@@ -115,9 +116,9 @@ def test_masks_are_kept_at_display_size(tmp_path: Path):
     assert demo.decode_mask(result.models[0].instances[0].rle).sum() == 25 * 50
 
 
-def test_per_class_ap_reads_the_evaluation_files(tmp_path: Path):
+def _write_eval(root: Path) -> None:
     for run, ap in (("yolo_s640_seed42", (0.5, 0.1)), ("m2f_s640_seed42", (0.2, 0.4))):
-        folder = tmp_path / run / "test"
+        folder = root / run / "test"
         folder.mkdir(parents=True)
         pd.DataFrame(
             {
@@ -136,8 +137,88 @@ def test_per_class_ap_reads_the_evaluation_files(tmp_path: Path):
             "segm": {"summary": {"AP": sum(ap) / 2}},
         }
         (folder / "metrics.json").write_text(json.dumps(metrics))
+
+
+def test_per_class_ap_reads_the_evaluation_files(tmp_path: Path):
+    _write_eval(tmp_path)
     table = demo.per_class_ap(["yolo_s640", "m2f_s640"], "test", eval_root=tmp_path)
     assert list(table.index) == ["chair", "bed", "mean"]  # most GT first, no empty class
     assert list(table["n_gt"]) == [7, 3, 10]
     assert list(table["yolo_s640_seed42"]) == [10, 50, 30]
     assert table.loc["mean", "m2f_s640_seed42"] == 30
+
+
+@pytest.fixture
+def annotated(photo: Path, monkeypatch) -> Path:
+    """GT: a bed (the mask of FakeModel) and a chair in the lower right corner."""
+    info = {"id": 7, "file_name": photo.name, "width": 80, "height": 60}
+    boxes = ((1, [0, 0, 40, 0, 40, 30, 0, 30]), (2, [60, 40, 80, 40, 80, 60, 60, 60]))
+    data = {
+        "images": [info],
+        "categories": [{"id": k, "name": n} for k, n in NAMES.items()],
+        "annotations": [
+            {"id": 10 + k, "image_id": 7, "category_id": k, "segmentation": [poly]}
+            for k, poly in boxes
+        ],
+    }
+    split = CocoSplit("test", photo.parent, photo.parent / "gt.json", data)
+    monkeypatch.setattr(demo, "_annotated_images", lambda: {photo.resolve(): (split, info)})
+    return photo
+
+
+def test_scores_of_an_annotated_photo(annotated: Path, tmp_path: Path):
+    _write_eval(tmp_path)
+    result = demo.predict_photo({"yolo_s640_seed42": FakeModel()}, annotated, NAMES)
+    table = demo.object_scores([result], 0.25, "test", eval_root=tmp_path).set_index("object")
+    assert list(table.index) == ["chair", "bed"]  # highest score first
+    assert list(table["result"]) == ["wrong_class", "matched"]  # the chair lies on the bed
+    assert list(table["gt_object"]) == ["bed", "bed"]
+    assert (table["iou"] > 0.9).all() and (table["mask_recall"] > 0.9).all()
+    assert list(table["class_AP"]) == [10, 50]
+    photo = demo.photo_scores([result], 0.25).iloc[0]
+    assert (photo["gt"], photo["predicted"], photo["matched"]) == (2, 2, 1)
+    assert (photo["precision"], photo["recall"]) == (0.5, 0.5)
+    gt = demo.gt_scores([result], 0.25).set_index("object")["yolo_s640_seed42"]
+    assert gt["bed"].endswith("ok") and gt["chair"] == "0.000 missed"
+    assert demo.gt_scores([result], 0.5)["yolo_s640_seed42"][0].endswith("wrong_class")
+    fig = demo.plot_scores(result, 0.25, tmp_path / "out")
+    assert len(fig.axes) == 2 and len(fig.axes[0].texts) == 2
+    assert "1 of 2 matched, 1 other" in fig.axes[1].get_title(loc="left")
+    assert (tmp_path / "out" / "a_yolo_s640_t0.25_scores.jpg").is_file()
+    plt.close(fig)
+
+
+def test_scores_of_a_photo_without_annotations(photo: Path, tmp_path: Path, monkeypatch):
+    _write_eval(tmp_path)
+    monkeypatch.setattr(demo, "_annotated_images", dict)
+    result = demo.predict_photo({"yolo_s640_seed42": FakeModel()}, photo, NAMES)
+    table = demo.object_scores([result], 0.25, "test", eval_root=tmp_path)
+    assert set(table["result"]) == {"not annotated"} and table["iou"].isna().all()
+    assert list(table["class_AP"]) == [10, 50]
+    assert demo.photo_scores([result]).empty and demo.gt_scores([result]).empty
+    assert demo.plot_scores(result) is None
+    assert demo.object_scores([result], 0.95, "test", eval_root=tmp_path).empty
+
+
+def test_scores_reject_annotations_of_another_size(annotated: Path):
+    result = demo.predict_photo({"yolo_s640_seed42": FakeModel()}, annotated, NAMES)
+    result.size = (60, 80)
+    with pytest.raises(ValueError, match="differ in size"):
+        demo.photo_scores([result])
+
+
+def test_predict_sizes_reuses_loaded_models(photo: Path, tmp_path: Path, monkeypatch):
+    other = tmp_path / "b.jpg"
+    Image.new("RGB", (50, 50)).save(other)
+    loads = []
+    monkeypatch.setattr(demo, "load_model", lambda run_id: loads.append(run_id) or FakeModel())
+    loaded = {"yolo_s640_seed42": FakeModel()}
+    results = demo.predict_sizes(["yolo", "m2f"], [320, 640], [photo, other], NAMES, loaded)
+    assert loads == ["yolo_s320_seed42", "m2f_s320_seed42", "m2f_s640_seed42"]
+    assert len(loaded["yolo_s640_seed42"].sizes) == 2
+    assert [(r.path.name, [m.run_id for m in r.models]) for r in results] == [
+        ("a.jpg", ["yolo_s320_seed42", "yolo_s640_seed42"]),
+        ("a.jpg", ["m2f_s320_seed42", "m2f_s640_seed42"]),
+        ("b.jpg", ["yolo_s320_seed42", "yolo_s640_seed42"]),
+        ("b.jpg", ["m2f_s320_seed42", "m2f_s640_seed42"]),
+    ]

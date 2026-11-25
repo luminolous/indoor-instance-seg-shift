@@ -16,6 +16,10 @@ the model itself at input size S (Ultralytics: preprocess + inference + postproc
 forward pass, for Mask2Former including the instance selection). ``total_ms`` also includes the
 resize of the photo and the mask upsampling to the original size. Both depend on other GPU load
 and are not a benchmark.
+
+The scores per object compare predictions with the ground truth of the photo, if it belongs to an
+annotated set. Matching and tags are those of :mod:`iiss.analysis.failures`, but on the masks at
+display size, so an IoU can differ slightly from the evaluation.
 """
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ import re
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -34,10 +39,12 @@ import pandas as pd
 from PIL import Image
 
 from iiss.analysis.domain_shift import load_results, parse_run_id
-from iiss.analysis.failure_viz import Item, class_colors, draw_panel, reduced_size
+from iiss.analysis.failure_experiments import release_gpu
+from iiss.analysis.failure_viz import Item, class_colors, draw_panel, reduced_size, small_mask
+from iiss.analysis.failures import default_limits, load_gt_set, match_image, overlap
 from iiss.analysis.result_plots import SHORT_NAMES
 from iiss.analysis.viz import SURFACE
-from iiss.data.coco import load_coco_json
+from iiss.data.coco import CocoSplit, load_coco_json
 from iiss.data.images import load_image
 from iiss.eval.results_json import Detection, decode_mask, encode_mask, resize_mask
 from iiss.utils.config import load_yaml
@@ -199,6 +206,36 @@ def predict_photos(
     return [predict_photo(models, p, names) for p in list_images(image_path)]
 
 
+def predict_sizes(
+    families: Sequence[str],
+    sizes: Sequence[int],
+    photos: Sequence[str | Path],
+    names: Mapping[int, str],
+    loaded: Mapping[str, PredictFn] | None = None,
+) -> list[PhotoResult]:
+    """Predict with every input size. One result per photo and model family, sizes in order.
+
+    ``loaded`` models are reused. The others are loaded one at a time and removed from memory
+    again, so that nine models never share the GPU.
+    """
+    loaded = loaded or {}
+    parts: dict[tuple[int, str], PhotoResult] = {}
+    for family in families:
+        for size in sizes:
+            run_id = full_run_id(f"{family}_s{size}")
+            predict = loaded[run_id] if run_id in loaded else load_model(run_id)
+            for k, path in enumerate(photos):
+                one = predict_photo({run_id: predict}, path, names)
+                if (k, family) in parts:
+                    parts[k, family].models.extend(one.models)
+                else:
+                    parts[k, family] = one
+            del predict
+            if run_id not in loaded:
+                release_gpu()
+    return [parts[k, f] for k in range(len(photos)) for f in families]
+
+
 # ---------------------------------------------------------------------------------------------
 # Output (no inference)
 # ---------------------------------------------------------------------------------------------
@@ -232,6 +269,26 @@ def spread_labels(ax: plt.Axes) -> None:
         placed.append(box)
 
 
+def _finish(
+    fig: plt.Figure,
+    axes: Sequence[plt.Axes],
+    result: PhotoResult,
+    threshold: float,
+    out_dir: str | Path | None,
+    suffix: str = "",
+) -> None:
+    fig.tight_layout()
+    fig.canvas.draw()
+    for ax in axes:
+        spread_labels(ax)
+    if out_dir is not None:
+        runs = "-".join(m.run_id.split("_seed")[0] for m in result.models)
+        path = resolve_path(out_dir) / f"{result.path.stem}_{runs}_t{threshold:.2f}{suffix}.jpg"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(path, dpi=100, facecolor=SURFACE, bbox_inches="tight")
+        logger.info("saved %s", path)
+
+
 def plot_photo(
     result: PhotoResult,
     threshold: float = DEFAULT_THRESHOLD,
@@ -259,16 +316,7 @@ def plot_photo(
             f"model {m.model_ms:.0f} ms, with mask upsampling {m.total_ms:.0f} ms"
         )
         draw_panel(ax, result.photo, items, title, label_size=9, title_size=12)
-    fig.tight_layout()
-    fig.canvas.draw()
-    for ax in axes[0]:
-        spread_labels(ax)
-    if out_dir is not None:
-        runs = "-".join(m.run_id.split("_seed")[0] for m in result.models)
-        path = resolve_path(out_dir) / f"{result.path.stem}_{runs}_t{threshold:.2f}.jpg"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(path, dpi=100, facecolor=SURFACE, bbox_inches="tight")
-        logger.info("saved %s", path)
+    _finish(fig, axes[0], result, threshold, out_dir)
     return fig
 
 
@@ -318,3 +366,213 @@ def per_class_ap(
     mean["n_gt"] = table["n_gt"].sum()
     table.loc["mean"] = mean
     return table.astype({"n_gt": int}).round(1)
+
+
+# ---------------------------------------------------------------------------------------------
+# Scores per object (no inference)
+# ---------------------------------------------------------------------------------------------
+
+
+@lru_cache(maxsize=1)
+def _annotated_images() -> dict[Path, tuple[CocoSplit, dict[str, Any]]]:
+    """``image path -> (split, image entry)`` of all evaluation sets."""
+    index = {}
+    for eval_set in load_yaml(repo_root() / "configs" / "base.yaml")["eval"]["gt_files"]:
+        split = load_gt_set(eval_set)
+        index.update({split.image_path(i).resolve(): (split, i) for i in split.images})
+    return index
+
+
+def ground_truth(result: PhotoResult) -> list[dict[str, Any]] | None:
+    """Annotations of the photo with masks at display size, ``None`` if it is not annotated."""
+    found = _annotated_images().get(resolve_path(result.path).resolve())
+    if found is None:
+        return None
+    split, info = found
+    if (info["width"], info["height"]) != result.size:
+        raise ValueError(f"{result.path.name}: the photo and its annotations differ in size")
+    size = result.photo.shape[:2]
+    return [
+        {
+            "id": a["id"],
+            "name": split.category_names[a["category_id"]],
+            "segmentation": encode_mask(small_mask(a["segmentation"], info, size)),
+        }
+        for a in split.annotations_by_image.get(info["id"], [])
+    ]
+
+
+def _match(
+    result: PhotoResult, run: ModelResult, gts: Sequence[Mapping[str, Any]], threshold: float
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Rows per GT and per shown prediction (in the order of ``run.shown``)."""
+    all_names = [g["name"] for g in gts] + [i.name for i in run.instances]
+    ids = {name: k for k, name in enumerate(dict.fromkeys(all_names))}
+    limits = default_limits(score_threshold=threshold)
+    found = match_image(
+        [{**g, "category_id": ids[g["name"]]} for g in gts],
+        [
+            {"category_id": ids[i.name], "score": i.score, "segmentation": i.rle}
+            for i in run.instances
+        ],
+        *result.photo.shape[:2],
+        limits,
+    )
+    shown = run.shown(threshold)
+    ov = overlap([i.rle for i in shown], [g["segmentation"] for g in gts])
+    index = {g["id"]: k for k, g in enumerate(gts)}
+    rows = []
+    for p, (instance, row) in enumerate(zip(shown, found.pred, strict=True)):
+        g = index.get(row["gt_id"])
+        if g is None and gts and ov.iou[p].max() >= limits.partial_iou:
+            g = int(ov.iou[p].argmax())
+        rows.append(
+            {
+                "object": instance.name,
+                "score": instance.score,
+                "result": row["kind"],
+                "gt_object": None if g is None else gts[g]["name"],
+                "iou": None if g is None else ov.iou[p, g],
+                "mask_precision": None if g is None else ov.precision[p, g],
+                "mask_recall": None if g is None else ov.recall[p, g],
+            }
+        )
+    return found.gt, rows
+
+
+def object_scores(
+    results: Sequence[PhotoResult],
+    threshold: float = DEFAULT_THRESHOLD,
+    ap_set: str = "phone",
+    eval_root: str | Path | None = None,
+) -> pd.DataFrame:
+    """One row per detected object: score, class AP of the run, and the comparison with the GT.
+
+    ``class_AP`` is the mask AP x 100 of the class on ``ap_set`` (empty if the set has no GT of the
+    class). ``iou``, ``mask_precision`` and ``mask_recall`` compare the mask with ``gt_object``: the
+    matched GT, else the GT of any class with the highest IoU (at least ``partial_iou``). They are
+    empty without annotations.
+    """
+    _check_threshold(threshold)
+    runs = list(dict.fromkeys(m.run_id for r in results for m in r.models))
+    class_ap = per_class_ap(runs, ap_set, eval_root=eval_root).drop(index="mean")
+    rows = []
+    for r in results:
+        gts = ground_truth(r)
+        for m in r.models:
+            if gts is None:
+                objects = [
+                    {"object": i.name, "score": i.score, "result": "not annotated"}
+                    for i in m.shown(threshold)
+                ]
+            else:
+                objects = _match(r, m, gts, threshold)[1]
+            for o in objects:
+                known = o["object"] in class_ap.index
+                ap = class_ap.at[o["object"], m.run_id] if known else None
+                rows.append({"photo": r.path.name, "run_id": m.run_id, **o, "class_AP": ap})
+    numbers = ["score", "iou", "mask_precision", "mask_recall"]
+    columns = ["photo", "run_id", "object", "score", "class_AP", "result", "gt_object"]
+    table = pd.DataFrame(rows, columns=[*columns, *numbers[1:]])
+    table[numbers] = table[numbers].astype(float).round(3)
+    return table.astype({"class_AP": float})
+
+
+def photo_scores(
+    results: Sequence[PhotoResult], threshold: float = DEFAULT_THRESHOLD
+) -> pd.DataFrame:
+    """One row per photo and run: matched objects, precision, recall and mean IoU of the matches.
+
+    These are values of one photo at one threshold, not AP. Photos without annotations are left
+    out.
+    """
+    _check_threshold(threshold)
+    rows = []
+    for r in results:
+        gts = ground_truth(r)
+        for m in r.models if gts is not None else []:
+            objects = _match(r, m, gts, threshold)[1]
+            ious = [o["iou"] for o in objects if o["result"] == "matched"]
+            rows.append(
+                {
+                    "photo": r.path.name,
+                    "run_id": m.run_id,
+                    "gt": len(gts),
+                    "predicted": len(objects),
+                    "matched": len(ious),
+                    "precision": len(ious) / len(objects) if objects else None,
+                    "recall": len(ious) / len(gts) if gts else None,
+                    "mean_iou": float(np.mean(ious)) if ious else None,
+                }
+            )
+    numbers = ["precision", "recall", "mean_iou"]
+    columns = ["photo", "run_id", "gt", "predicted", "matched", *numbers]
+    table = pd.DataFrame(rows, columns=columns)
+    table[numbers] = table[numbers].astype(float).round(2)
+    return table
+
+
+def gt_scores(results: Sequence[PhotoResult], threshold: float = DEFAULT_THRESHOLD) -> pd.DataFrame:
+    """One row per annotated object, one column per run: best IoU within the class and the tag.
+
+    Photos without annotations are left out.
+    """
+    _check_threshold(threshold)
+    rows: dict[tuple[Path, int], dict[str, Any]] = {}
+    for r in results:
+        gts = ground_truth(r)
+        for m in r.models if gts is not None else []:
+            for gt, row in zip(gts, _match(r, m, gts, threshold)[0], strict=True):
+                entry = rows.setdefault(
+                    (r.path, gt["id"]),
+                    {
+                        "photo": r.path.name,
+                        "object": gt["name"],
+                        "area_%": round(100 * row["area_fraction"], 1),
+                    },
+                )
+                entry[m.run_id] = f"{row['iou']:.3f} {row['tag']}"
+    return pd.DataFrame(list(rows.values()))
+
+
+def plot_scores(
+    result: PhotoResult,
+    threshold: float = DEFAULT_THRESHOLD,
+    out_dir: str | Path | None = None,
+) -> plt.Figure | None:
+    """GT panel and one panel per model, labels with score and IoU. ``None`` without annotations.
+
+    White outline: GT or matched prediction. Black outline: prediction without a matching GT.
+    Saved as ``<out_dir>/<photo>_<runs>_t<threshold>_scores.jpg`` if ``out_dir`` is given.
+    """
+    _check_threshold(threshold)
+    gts = ground_truth(result)
+    if gts is None:
+        logger.warning("%s is not annotated, there is nothing to compare", result.path.name)
+        return None
+    height, width = result.photo.shape[:2]
+    colors = class_colors([*photo_colors(result), *(g["name"] for g in gts)])
+    n = 1 + len(result.models)
+    fig, axes = plt.subplots(
+        1, n, figsize=(6 * n, 6 * height / width + 0.6), squeeze=False, facecolor=SURFACE
+    )
+    items = [Item(decode_mask(g["segmentation"]), colors[g["name"]], g["name"], True) for g in gts]
+    title = f"Ground truth: {len(gts)} objects\n{result.path.name}"
+    draw_panel(axes[0][0], result.photo, items, title, label_size=9, title_size=12)
+    for ax, m in zip(axes[0][1:], result.models, strict=True):
+        model, size = parse_run_id(m.run_id)
+        objects = _match(result, m, gts, threshold)[1]
+        items = []
+        for i, o in zip(m.shown(threshold), objects, strict=True):
+            matched = o["result"] == "matched"
+            text = f"IoU {o['iou']:.2f}" if matched else o["result"]
+            label = f"{i.name} {i.score:.2f}, {text}"
+            items.append(Item(decode_mask(i.rle), colors[i.name], label, matched))
+        n_matched = sum(i.matched for i in items)
+        title = (
+            f"{SHORT_NAMES[model]} {size} (score >= {threshold:g})\n"
+            f"{n_matched} of {len(gts)} matched, {len(items) - n_matched} other predictions"
+        )
+        draw_panel(ax, result.photo, items, title, label_size=9, title_size=12)
+    _finish(fig, axes[0], result, threshold, out_dir, "_scores")
+    return fig
